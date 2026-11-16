@@ -1,0 +1,15 @@
+{
+ "capsules": [
+  {
+   "archive_sha256": "7425a387b884d3e09bde736ca8a11b8c6d9239a31b51be8bf2894e7efecff179",
+   "archive_size": 29753388,
+   "asset": "stackbite-runtime-capsule-0.6.0-linux-x86_64-19a2fa8b1f71.tar.gz",
+   "expanded_bytes": 97937203,
+   "manifest_sha256": "279ad56c43608e12560341ebe1a099824f646cd90b97578c807b03c0ebad096e",
+   "platform": "linux-x86_64"
+  }
+ ],
+ "commit": "19a2fa8b1f710457f37aea7f03db49261fc3b76c",
+ "schema": "stackbite.runtime-capsule-catalog.v1",
+ "version": "0.6.0"
+}
