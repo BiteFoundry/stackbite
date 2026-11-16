@@ -1,4 +1,12 @@
 #!/bin/bash
+# RREL97 R7 PLACED-WIRE (release/operators/RREL97/r7mac.py): insertions only; preflight-3 also runs the 4 Root-pinned
+# stackbite-management host-wire tests after its unchanged runtime_bootstrap checks (private receipt, own logs).
+# RREL68 R5 FULL + FOCUSED (release/operators/RREL68/mac/r5mac.py): nothing is omitted (all 25 H060 steps run);
+# preflight-2 (RREL49) and preflight-3 (RREL68, runtime_bootstrap) run the Root-pinned R5 regressions natively.
+# RREL42 R3 DELTA (tools/derive_r3.py): the EXECUTED 0.6.0 R2 job body of H060 83ef6d1f with only these edits:
+# the steps in mac060.py R3_OMITTED are not invoked (their R2 receipts are pinned as reused_r2_not_run_r3, never
+# R3 native execution) and ONE added step, preflight-2, runs the Root-pinned R3 regression natively. Every other
+# step, flag, lane, MSRV, audit, lifecycle, seal and the CMS envelope are byte-unchanged.
 # RREL04 (tools/derive_mac.py): the EXECUTED 0.5.123 R3 job body of H3 7e77f771 with only literal
 # version/baseline/name substitutions (sb060 venv, q060 QA roots, old123 baseline, mac060.py)
 # and ONE added flag: the final build passes --runtime-capsule-catalog "$W/inputs/runtime-capsules.json"
@@ -294,6 +302,59 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps(r,sort_keys=True)+'\n')
 PYHOST
 }
 step preflight-1 macos_process_preflight
+# RREL42/RREL49 preflight-2: the Root-pinned R3 regression (stackbite-launcher --lib, pins r3_delta.regression),
+# discovered and executed on this native Mac in the SAME preflight-target dev graph preflight-1 compiled for
+# stackbite-launcher --lib. Selection is libtest `--exact` with each pinned required test as its own argv word
+# (names are validated by the helper's pin check; read -a, no eval, no glob), so ignored child tests of the same
+# module are never selected; the listed set must equal the pinned set, nothing ignored, every test ok.
+r3_regression() {
+  local pkg names
+  local -a tests
+  pkg="$(helper pin r3_delta.regression.package)"
+  names="$(helper pin r3_delta.regression.required_tests)"
+  read -r -a tests <<< "$names"
+  test "${#tests[@]}" -ge 1
+  local T=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
+    --manifest-path rust/Cargo.toml --locked -p "$pkg" --lib)
+  "${T[@]}" -- --exact "${tests[@]}" --list --format terse < /dev/null > "$W/preflight-2.list"
+  "${T[@]}" -- --exact "${tests[@]}" --test-threads=1 < /dev/null | tee "$W/preflight-2.out"
+  helper regression --list "$W/preflight-2.list" --run "$W/preflight-2.out" --out "$OUT/preflight-2.json"
+}
+step preflight-2 r3_regression
+# RREL68 preflight-3: the Root-pinned R5 runtime_bootstrap suite (stackbite-remote-bridge --lib, pins
+# r3_delta.focused), same preflight-target dev graph, libtest --exact with each pinned name as its own argv word
+# (read -a, no eval, no glob); listed set must equal the pinned set, nothing ignored, every test ok.
+r5_focused() {
+  local pkg names
+  local -a tests
+  pkg="$(helper pin r3_delta.focused.package)"
+  names="$(helper pin r3_delta.focused.required_tests)"
+  read -r -a tests <<< "$names"
+  test "${#tests[@]}" -ge 1
+  local T=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
+    --manifest-path rust/Cargo.toml --locked -p "$pkg" --lib)
+  "${T[@]}" -- --exact "${tests[@]}" --list --format terse < /dev/null > "$W/preflight-3.list"
+  "${T[@]}" -- --exact "${tests[@]}" --test-threads=1 < /dev/null | tee "$W/preflight-3.out"
+  helper focused --list "$W/preflight-3.list" --run "$W/preflight-3.out" --out "$OUT/preflight-3.json"
+  # RREL97 R7: AFTER the unchanged bridge checks above, in the SAME step, toolchain, RUSTC and preflight-target, the 4
+  # Root-pinned stackbite-management --lib host-wire tests (pins placed_wire), --exact, each name its own argv word.
+  # Their output goes to their own sealed ci-out files, never to preflight-3.log (the 74-row bridge log stays as is).
+  local wpkg wnames
+  local -a wtests
+  wpkg="$(helper pin placed_wire.package)"
+  wnames="$(helper pin placed_wire.required_tests)"
+  read -r -a wtests <<< "$wnames"
+  test "${#wtests[@]}" -eq 4
+  local M=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
+    --manifest-path rust/Cargo.toml --locked -p "$wpkg" --lib)
+  "${M[@]}" -- --exact "${wtests[@]}" --list --format terse < /dev/null \
+    > "$OUT/preflight-3-placed-wire.list" 2> "$OUT/preflight-3-placed-wire.list.stderr.log"
+  "${M[@]}" -- --exact "${wtests[@]}" --test-threads=1 < /dev/null \
+    > "$OUT/preflight-3-placed-wire.run.log" 2> "$OUT/preflight-3-placed-wire.run.stderr.log"
+  helper placed-wire --bridge "$OUT/preflight-3.json" --list "$OUT/preflight-3-placed-wire.list" \
+    --run "$OUT/preflight-3-placed-wire.run.log" --out "$OUT/preflight-3-placed-wire.json" > /dev/null
+}
+step preflight-3 r5_focused
 
 # Full native stackbite-terminal-tui --lib (closes T01). Same toolchain, RUSTC and preflight-target as the
 # preflights, so the shared debug test graph is not compiled twice; the release lanes build separately.
