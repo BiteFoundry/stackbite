@@ -1,12 +1,15 @@
-# Stackbite
+# StackBite
 
-A local workspace for shells and agent CLIs, organized into Rooms and Seats.
-The app uses a Rust-native launcher, Room service, terminal owners and TUI.
+A terminal workspace for shells and AI coding agents, organized into Rooms and
+Seats. The app is a Rust-native launcher, Room service, terminal owner and TUI;
+no Python is needed to run it.
+
+Current release: **0.6.0** · [Release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.6.0) · [All releases](https://github.com/Shinick-Han/stackbite/releases) · [Issues](https://github.com/Shinick-Han/stackbite/issues)
 
 ## Install
 
-Install [Node.js 20 or later](https://nodejs.org/en/download), then open a new
-terminal and run:
+Install the current [Node.js LTS](https://nodejs.org/en/download) (Node.js 20 or
+later), open a new terminal and run:
 
 ```sh
 npm install --global stackbite@latest
@@ -15,25 +18,45 @@ stackbite
 ```
 
 The npm package is a small launcher. `setup` downloads and verifies its pinned
-native bundle without opening the app; first launch also prepares it if needed.
-Later launches reuse the verified cache. `npx --yes stackbite@latest` also works.
-Install and sign in to your chosen provider CLI separately. You can also download
-and extract a native bundle and run its installer; that route needs no Node.js,
-Python or WSL. Keep the entire extracted archive together when using its installer.
+native bundle without opening the app; the first launch also prepares it if
+needed, and later launches reuse the verified copy. `npx --yes stackbite@latest`
+runs it once. Install and sign in to your provider CLIs separately.
 
-Native bundles in 0.5.123: Windows x64, Linux x86_64 with GLIBC 2.28+, and Apple Silicon
-and Intel macOS 13+. Linux ARM and musl/Alpine bundles are not provided.
-This core release omits the optional Phone runtime. See release notes for changes and validation scope.
-Download and extract the **entire** archive from
-[latest release](https://github.com/Shinick-Han/stackbite/releases/latest).
+Without Node.js, download a native bundle from the
+[latest release](https://github.com/Shinick-Han/stackbite/releases/latest),
+extract the **entire** archive and run `stackbite.exe` (Windows) or `./stackbite`
+(Linux, macOS).
+
+| Platform | 0.6.0 bundle |
+| --- | --- |
+| Windows | x64 |
+| Linux | x86_64, GLIBC 2.28+ |
+| macOS | Apple Silicon and Intel, macOS 13+ |
+
+Linux ARM and musl/Alpine bundles are not provided. npm details:
+[packaging/npm/README.md](https://github.com/Shinick-Han/stackbite/blob/main/packaging/npm/README.md).
 
 ## Use
 
-The sidebar manages Rooms and Seats. Menu opens actions and settings; Rooms and
-Files switch sidebar content. Files provides browsing and read-only Preview.
-Closing the window leaves daemon-owned work running. Room and Seat definitions
-and saved records persist; conversation resume depends on the provider and the
-recorded conversation identity.
+Start `stackbite` in a project directory. The sidebar switches between **Rooms**
+(Rooms and Seats) and **Files** (bounded read-only Preview). **Menu** opens
+actions and settings. Closing the window leaves native-owned work running; Room
+and Seat definitions and saved records persist, and conversation resume depends
+on the provider.
+
+Press `Ctrl+B`, release it, then `?` for Help. `w` opens a new Room, `c` a new
+Seat, `f` focuses the list and `q` closes the window while keeping Seats running.
+Change keys in **Settings → Keyboard shortcuts**.
+
+## Remote execution hosts
+
+In **Menu → Connections**, **Setup** and **Test** prepare a small, verified runtime
+capsule on a Linux x86_64 (GLIBC 2.28+) SSH host, so it runs remote Seats without
+a full StackBite installation. Choose the host with **Run on**. Remote status is
+batched over existing connections, unused capsule files are pruned in bounded idle
+passes, and **Forget** of an unreachable host keeps its credential removal pending
+until the host is reachable. Authentication is native OpenSSH; StackBite stores no
+passwords. Windows execution hosts cannot run the capsule.
 
 ## Update and maintenance
 
@@ -41,30 +64,24 @@ recorded conversation identity.
 stackbite --version
 stackbite --status
 stackbite update --check
-stackbite update --apply
+stackbite update
 stackbite restart
-stackbite stop --apply
+stackbite stop --preview
+stackbite uninstall --preview
 ```
 
-`update --apply` installs the released runtime and coordinates engine transition.
-Live CLIs remain running by default; explicit Stop and Resume can move them to a
-new engine. Active Seats and older owners can finish transition separately; a client version
-alone does not prove every running engine has changed. `restart` recovers the
-local Room service while retaining definitions and records; it does not guarantee
-that every interrupted CLI resumes its prior conversation.
+Update npm installations with `npm install --global stackbite@latest`. Installing
+and activating an update are separate steps; running CLIs stay on their engine
+until an explicit Stop and Resume. `restart` recovers the local Room service and
+keeps definitions and records. `stackbite --help`, `stackbite remote --help` and
+`stackbite agent --help` describe all commands.
 
-`stackbite --help` and `stackbite agent --help` describe the available commands.
-`stackbite uninstall --preview` shows removal scope before an explicit uninstall.
+## Distribution and license
 
-## Distribution
-
-This repository distributes installers, signed native release artifacts and the
-npm launcher. StackBite 0.5.122 and later are licensed under the StackBite License
-(see LICENSE); the first-party source is private. Releases 0.5.121 and earlier keep
-their MIT License. Bundled dependencies retain their own licenses and notices. See release notes for the
-actual platform validation and known limitations of each version. Published
-release: **0.5.123**.
-
-## Keyboard shortcuts
-
-Press `Ctrl+B`, then `?` for Help. Use `w` for a new Room, `c` for a new Seat, `f` to focus the list, and `q` to close the window while keeping Seats running. These letters follow `Ctrl+B`. Change direct bindings in Settings → Keyboard shortcuts.
+This repository distributes the npm launcher, installers and signed native release
+artifacts. The first-party source is private. StackBite 0.5.122 and later is
+licensed under the
+[StackBite License](https://github.com/Shinick-Han/stackbite/blob/main/LICENSE);
+releases 0.5.121 and earlier keep their MIT License. Bundled dependencies retain
+their own licenses and notices. Each release's notes state its actual platform
+validation and known limits.

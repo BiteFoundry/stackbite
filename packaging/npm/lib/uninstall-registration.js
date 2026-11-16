@@ -44,9 +44,164 @@ async function projectLocal(prefix) {
   return false;
 }
 
-function npmProgram(packageRoot, nodeExecutable, resolve = require.resolve) {
-  const metadata = resolve('npm/package.json', { paths: [packageRoot, path.dirname(nodeExecutable)] });
-  return path.join(path.dirname(metadata), 'bin', 'npm-cli.js');
+// The npm CLI that the current Node runs. Node, the global prefix and npm can
+// live in three separate roots. A candidate comes from, in order: module
+// resolution from the package and Node, the registration prefix, npm's own
+// npm_execpath, the Node distribution layout and the first npm shim on PATH.
+// No string qualifies by itself: the candidate must be the real
+// bin/npm-cli.js that a real npm package's metadata names as its `npm` bin.
+// Shims are read, never run. Throws STACKBITE_NPM_CLI_UNAVAILABLE.
+async function npmProgram(packageRoot, nodeExecutable, options = {}) {
+  const { cli, checked } = await locateNpm(packageRoot, nodeExecutable, options);
+  if (cli) return cli;
+  const error = new Error('No verified npm CLI was found (checked '
+    + checked.map(item => `${item.kind}: ${item.reason}`).join(', ') + ')');
+  error.code = 'STACKBITE_NPM_CLI_UNAVAILABLE';
+  error.checked = checked;
+  throw error;
+}
+
+async function locateNpm(packageRoot, nodeExecutable, options = {}) {
+  const io = options.io || fs;
+  const platform = options.platform || process.platform;
+  const environment = options.environment || process.env;
+  const resolve = options.resolve || require.resolve;
+  const windows = platform === 'win32';
+  const checked = [];
+  const prefixRoot = options.prefix ? (windows ? path.join(options.prefix, 'node_modules', 'npm')
+    : path.join(options.prefix, 'lib', 'node_modules', 'npm')) : null;
+  const nodeRoot = async () => {
+    const node = await io.realpath(nodeExecutable);
+    if (!(await io.lstat(node)).isFile()) throw npmRejected('node is not a file');
+    return windows ? path.join(path.dirname(node), 'node_modules', 'npm')
+      : path.join(path.dirname(path.dirname(node)), 'lib', 'node_modules', 'npm');
+  };
+  const candidates = [
+    ['resolve', async () => {
+      let metadata;
+      // Node's ancestor node_modules walk can reach a directory that another
+      // local user may create (C:\node_modules). Any resolution failure,
+      // including a foreign package's exports, rejects only this candidate.
+      try { metadata = resolve('npm/package.json', { paths: [packageRoot, path.dirname(nodeExecutable)] }); }
+      catch (error) {
+        if (error.code === 'MODULE_NOT_FOUND') return null;
+        throw npmRejected(`module resolution failed (${typeof error.code === 'string' ? error.code : 'error'})`);
+      }
+      if (typeof metadata !== 'string' || !path.isAbsolute(metadata)) throw npmRejected('module resolution failed (path)');
+      // Only this registration's own npm or the running Node distribution's npm qualifies here.
+      const found = await io.realpath(path.dirname(metadata));
+      const allowed = [];
+      for (const expected of [() => prefixRoot, nodeRoot]) {
+        try { const root = await expected(); if (root) allowed.push(await io.realpath(root)); }
+        catch (error) { if (!error.npmRejected && !['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP'].includes(error.code)) throw error; }
+      }
+      if (!allowed.some(root => samePath(root, found, windows))) throw npmRejected('resolved npm is outside the prefix and Node distribution');
+      return verifiedNpmRoot(found, io);
+    }],
+    ['prefix', () => prefixRoot ? verifiedNpmRoot(prefixRoot, io) : null],
+    ['npm_execpath', () => environment.npm_execpath ? verifiedNpmCli(environment.npm_execpath, io) : null],
+    ['node', async () => verifiedNpmRoot(await nodeRoot(), io)],
+    ['PATH', () => pathShim(environment, windows, io)],
+  ];
+  for (const [kind, candidate] of candidates) {
+    let cli = null;
+    try { cli = await candidate(); }
+    catch (error) {
+      if (!error.npmRejected && !['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP', 'EISDIR'].includes(error.code)) throw error;
+      checked.push({ kind, reason: error.npmRejected ? error.message : (error.code === 'ENOENT' ? 'absent' : error.code) });
+      continue;
+    }
+    if (cli) return { cli, checked: [...checked, { kind, reason: 'verified' }] };
+    checked.push({ kind, reason: 'absent' });
+  }
+  return { cli: null, checked };
+}
+
+const samePath = (a, b, windows) => windows ? a.toLowerCase() === b.toLowerCase() : a === b;
+
+function npmRejected(reason) {
+  const error = new Error(reason);
+  error.npmRejected = true;
+  return error;
+}
+
+// The real bin/npm-cli.js of the npm package at `directory`.
+async function verifiedNpmRoot(directory, io) {
+  const root = await io.realpath(directory);
+  const metadataFile = path.join(root, 'package.json');
+  const info = await io.lstat(metadataFile);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 1024 * 1024) throw npmRejected('npm metadata is not a file');
+  let metadata;
+  try { metadata = JSON.parse(await io.readFile(metadataFile, 'utf8')); }
+  catch (error) { if (error instanceof SyntaxError) throw npmRejected('npm metadata is not JSON'); throw error; }
+  const bin = metadata && typeof metadata.bin === 'object' && metadata.bin !== null ? metadata.bin.npm : undefined;
+  if (metadata?.name !== 'npm' || typeof metadata.version !== 'string' || typeof bin !== 'string'
+      || path.posix.normalize(bin.replaceAll('\\', '/')) !== 'bin/npm-cli.js') throw npmRejected('npm metadata mismatch');
+  const cli = path.join(root, 'bin', 'npm-cli.js');
+  const cliInfo = await io.lstat(cli);
+  if (!cliInfo.isFile() || cliInfo.isSymbolicLink() || await io.realpath(cli) !== cli) throw npmRejected('npm CLI target mismatch');
+  return cli;
+}
+
+// An absolute CLI path (or link to it) accepted only as its npm package's own CLI.
+async function verifiedNpmCli(file, io) {
+  if (typeof file !== 'string' || !path.isAbsolute(file) || /[\0\r\n]/.test(file)) throw npmRejected('npm CLI path is not absolute');
+  const real = await io.realpath(file);
+  if (path.basename(real) !== 'npm-cli.js' || path.basename(path.dirname(real)) !== 'bin') throw npmRejected('npm CLI target mismatch');
+  if (await verifiedNpmRoot(path.dirname(path.dirname(real)), io) !== real) throw npmRejected('npm CLI target mismatch');
+  return real;
+}
+
+// The CLI reference that npm's own generated shims (Node's npm.cmd/npm.ps1/npm
+// and cmd-shim) spell, anchored to the shim's own directory: %~dp0 or %dp0% in
+// npm.cmd, $PSScriptRoot or $basedir in npm.ps1, $basedir in an sh shim (Node's
+// Windows sh shim spells its own directory $CLI_BASEDIR). POSIX script shims
+// reach the prefix's lib/node_modules. Matched on one executable line only;
+// nothing is parsed or run. A comment naming the path does not count.
+const SHIM_ANCHORS = { 'npm.cmd': ['%~dp0', '%dp0%'], 'npm.ps1': ['$PSScriptRoot', '$basedir', '${basedir}'], npm: ['$basedir', '${basedir}'] };
+
+function anchoredShim(name, body, windows) {
+  const tail = (windows ? '' : '../lib/') + 'node_modules/npm/bin/npm-cli.js';
+  const anchors = windows && name === 'npm' ? [...SHIM_ANCHORS.npm, '$CLI_BASEDIR', '${CLI_BASEDIR}'] : SHIM_ANCHORS[name];
+  return body.split(/\r?\n/).some(line => {
+    const text = line.trim();
+    if (/^(?:#|::|rem(?:\s|$))/i.test(text)) return false;
+    // The anchor starts a path token and is followed by its separator (%~dp0
+    // already ends in one), exactly the CLI path and the token's end.
+    return anchors.some(anchor => {
+      for (let at = text.indexOf(anchor); at !== -1; at = text.indexOf(anchor, at + 1)) {
+        if (at > 0 && !/["'=\s]/.test(text[at - 1])) continue;
+        const after = text.slice(at + anchor.length);
+        if (!anchor.startsWith('%') && !after.startsWith('/')) continue;
+        const rest = after.replace(/^\/+/, '');
+        if (rest.startsWith(tail) && /^(?:["'\s]|$)/.test(rest.slice(tail.length))) return true;
+      }
+      return false;
+    });
+  });
+}
+
+// Only the first PATH directory that holds an npm command is examined, as the
+// shell would pick it. A link must reach the npm CLI; a script shim must hold
+// npm's anchored CLI reference and that package must sit where npm puts it.
+async function pathShim(environment, windows, io) {
+  const key = Object.keys(environment).find(name => (windows ? name.toUpperCase() === 'PATH' : name === 'PATH'));
+  const names = windows ? ['npm.cmd', 'npm.ps1', 'npm'] : ['npm'];
+  for (const directory of (key ? String(environment[key]) : '').split(path.delimiter)) {
+    if (!directory || !path.isAbsolute(directory)) continue;
+    for (const name of names) {
+      const shim = path.join(directory, name);
+      let info;
+      try { info = await io.lstat(shim); } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) continue; throw error; }
+      if (info.isSymbolicLink()) return verifiedNpmCli(shim, io);
+      if (!info.isFile() || info.size > 64 * 1024) throw npmRejected('npm shim is not a file');
+      const body = (await io.readFile(shim)).toString('utf8').replaceAll('\\', '/');
+      if (!anchoredShim(name, body, windows)) throw npmRejected('npm shim names no npm CLI');
+      return verifiedNpmRoot(windows ? path.join(directory, 'node_modules', 'npm')
+        : path.join(path.dirname(directory), 'lib', 'node_modules', 'npm'), io);
+    }
+  }
+  return null;
 }
 
 async function removeRegistration(argv, result, environment, launch, options = {}) {
@@ -55,7 +210,14 @@ async function removeRegistration(argv, result, environment, launch, options = {
   const prefix = await registration(root, options.platform || process.platform);
   if (prefix === null) return result;
   const node = options.nodeExecutable || process.execPath;
-  const cli = options.npmCli || npmProgram(root, node);
+  let cli = options.npmCli;
+  if (!cli) {
+    try { cli = await npmProgram(root, node, { ...options, environment, prefix }); }
+    catch (error) {
+      if (error.code !== 'STACKBITE_NPM_CLI_UNAVAILABLE') throw error;
+      throw registrationRemains(prefix, error, options.platform || process.platform);
+    }
+  }
   const backup = await captureCommand(root, prefix, options.platform || process.platform, node, cli, options);
   const removed = await launch(node, [cli, 'uninstall', '--global', '--prefix', prefix,
     'stackbite', '--ignore-scripts', '--offline', '--no-audit', '--no-fund'],
@@ -75,6 +237,22 @@ async function removeRegistration(argv, result, environment, launch, options = {
   // npm can fail after removing its last owned file. Physical absence settles it.
   void removed;
   return result;
+}
+
+// Native removal completed and nothing of the npm command was touched: the
+// registration stays an ordinary, removable npm package. The next action names
+// the literal prefix, quoted for PowerShell on Windows and for a POSIX shell.
+function registrationRemains(prefix, unavailable, platform) {
+  const quoted = platform === 'win32' ? `'${prefix.replace(/['‘’‚‛]/g, quote => quote + quote)}'`
+    : `'${prefix.replaceAll("'", "'\\''")}'`;
+  const remains = new Error(`Stackbite native removal completed; the npm registration remains at ${prefix}. `
+    + `${unavailable.message}. Remove it with: npm uninstall --global --prefix ${quoted} stackbite`);
+  remains.code = 'STACKBITE_NPM_REGISTRATION_REMAINS';
+  remains.nativeCompleted = true;
+  remains.registrationPrefix = prefix;
+  remains.removalCommand = ['npm', 'uninstall', '--global', '--prefix', prefix, 'stackbite'];
+  remains.checked = unavailable.checked;
+  return remains;
 }
 
 async function captureCommand(root, prefix, platform, node, cli, recoveryOptions) {
@@ -221,7 +399,36 @@ async function descriptor(options = {}) {
   const prefix = await registration(root, options.platform || process.platform);
   if (prefix === null) return null;
   const node = options.nodeExecutable || process.execPath;
-  return { root, prefix, node: await fs.realpath(node), cli: await fs.realpath(options.npmCli || npmProgram(root, node)) };
+  let cli = options.npmCli;
+  if (!cli) {
+    try { cli = await npmProgram(root, node, { ...options, prefix }); }
+    catch (error) {
+      // The caller may omit the descriptor and name this registration as residue.
+      if (error.code === 'STACKBITE_NPM_CLI_UNAVAILABLE') Object.assign(error, { registrationRoot: root, registrationPrefix: prefix });
+      throw error;
+    }
+  }
+  return { root, prefix, node: await fs.realpath(node), cli: await fs.realpath(cli) };
+}
+
+// A descriptor, or null with the reason when no verified npm CLI exists. The
+// native product still runs without STACKBITE_NPM_REGISTRATION; the npm
+// package is then never removed by it. Every other refusal stays an error.
+async function optionalDescriptor(options = {}) {
+  try { return { npm: await descriptor(options), unavailable: null }; }
+  catch (error) { if (error.code !== 'STACKBITE_NPM_CLI_UNAVAILABLE') throw error; return { npm: null, unavailable: error }; }
+}
+
+// After a native removal that ran without a descriptor: only a finished native
+// removal (exit 0) whose npm registration still physically exists is reported
+// as completed native removal plus registration residue with its next action.
+// Exit 2 is the native engine's pending answer, never completion: it stands as
+// is, like a refusal or a signal, and claims nothing about npm.
+async function settleWithoutNpm(argv, result, unavailable, platform = process.platform) {
+  if (!unavailable || !acceptedRemoval(argv, result) || result.code !== 0) return result;
+  try { await fs.lstat(unavailable.registrationRoot); }
+  catch (error) { if (error.code === 'ENOENT') return result; throw error; }
+  throw registrationRemains(unavailable.registrationPrefix, unavailable, platform);
 }
 
 function windowsCleanupCommand(helper, pin) {
@@ -501,4 +708,5 @@ async function assertSourceCleanupPins(pins) {
   }
 }
 
-module.exports = { registration, npmProgram, removeRegistration, explicitApply, descriptor, resumeWithoutRuntime, registrationOnly, ownCommandLink, processesDone };
+module.exports = { registration, npmProgram, removeRegistration, explicitApply, descriptor, optionalDescriptor, settleWithoutNpm,
+  resumeWithoutRuntime, registrationOnly, ownCommandLink, processesDone };

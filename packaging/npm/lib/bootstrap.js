@@ -784,12 +784,13 @@ async function continueAcceptedRemoval(spec, argv, environment, options) {
     if (JSON.stringify(await acceptedRemovalWithoutCapsule(environment, spec.platform)) !== JSON.stringify(pending)) {
       fail('Stackbite removal changed while staging its runtime; nothing was run');
     }
-    const npm = await require('./uninstall-registration').descriptor(options);
+    const registrationTools = require('./uninstall-registration');
+    const { npm, unavailable } = await registrationTools.optionalDescriptor(options);
     const result = await launchNative(executable, argv, { ...environment,
       ...(npm ? { STACKBITE_NPM_REGISTRATION: JSON.stringify(npm) } : {}),
       STACKBITE_HOME: path.resolve(payload) }, options);
     retained = await stageStillNeeded(pending, staging);
-    return result;
+    return registrationTools.settleWithoutNpm(argv, result, unavailable, options.platform || process.platform);
   } finally {
     if (!retained) await removeStage(staging);
   }
@@ -832,8 +833,10 @@ async function main(argv = process.argv.slice(2), options = {}) {
   // Only the package's existing descriptor producer supplies registration input.
   // The engine validates package membership and tool/file identity before save.
   delete environment.STACKBITE_NPM_REGISTRATION;
-  const { descriptor, explicitApply } = require('./uninstall-registration');
-  let npm = !removing ? await descriptor(options) : null;
+  // Without a verified npm CLI the descriptor is omitted and the native product still runs.
+  const { optionalDescriptor, settleWithoutNpm, explicitApply } = require('./uninstall-registration');
+  let { npm } = !removing ? await optionalDescriptor(options) : { npm: null };
+  let unavailable = null;
   const registrationSource = await pinRegistration(npm, options);
   try {
     if (npm) environment.STACKBITE_NPM_REGISTRATION = JSON.stringify(npm);
@@ -867,10 +870,12 @@ async function main(argv = process.argv.slice(2), options = {}) {
     if (setup) return { code: 0, signal: null };
     timing.mark(environment, 'launcher.exec');
     // The bundled runtime owns state discovery and migration for every entrypoint.
-    if (removing && explicitApply(argv)) npm = await descriptor(options);
-    return launchNative(installed.executable, argv, { ...environment,
+    if (removing && explicitApply(argv)) ({ npm, unavailable } = await optionalDescriptor(options));
+    const result = await launchNative(installed.executable, argv, { ...environment,
       ...(npm ? { STACKBITE_NPM_REGISTRATION: JSON.stringify(npm) } : {}),
       STACKBITE_HOME: path.resolve(installed.home) }, options);
+    // Native completion stands; a registration it could not remove is named with its next action.
+    return settleWithoutNpm(argv, result, unavailable, platform);
   } finally { if (registrationSource) await registrationSource.close(); }
 }
 module.exports = { releaseSpec, validatePayload, ensureBinary, launchNative, main };
