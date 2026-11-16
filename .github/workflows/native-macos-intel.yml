@@ -1,22 +1,23 @@
-name: StackBite native macOS Intel x86_64 0.5.123 (private source)
-run-name: native-macos-intel-123-${{ github.run_id }}
-# PLATFORM123 (tools/derive123.py): the EXECUTED 0.5.122 native job of H 1dd7e036 (build, two equal
+name: StackBite native macOS Intel x86_64 0.6.0 (private source)
+run-name: native-macos-intel-060-${{ github.run_id }}
+# RREL04 (tools/derive_mac.py): the EXECUTED 0.5.123 R3 native job of H3 7e77f771 (build, two equal
 # reproducible lanes, MSRV 1.85.1, strip probe, preflights, full TUI lib, package/Mach-O/minos-13 audit,
-# runtime QA, lifecycle fresh + 0.5.122 update, provider trust, connect, ordinary PTY) for 0.5.123 on the
-# PRIVATE product source. Manual only: ONE Intel x86_64 job on the standard public macos-15-intel runner of
-# Shinick-Han/stackbite; no inputs, no retry, no push/PR/tag trigger, no needs, no cache. The other
-# architecture is a separate workflow with its own concurrency group, so neither can cancel the other.
-# PRODUCT = private shinick-dev/stackbite at the commit pinned in ci/native123-macos/mac123-pins-macos-x86_64.json,
+# runtime QA, lifecycle fresh + 0.5.123 update, provider trust, connect, ordinary PTY) for 0.6.0 on the
+# PRIVATE product source; the final build pins the Root-bound L0 runtime-capsule catalog. Manual only: ONE
+# Intel x86_64 job on the standard public macos-15-intel runner of Shinick-Han/stackbite; no inputs, no retry,
+# no push/PR/tag trigger, no needs, no cache. The other architecture is a separate workflow with its own
+# concurrency group, so neither can cancel the other.
+# PRODUCT = private shinick-dev/stackbite at the commit pinned in ci/native060-macos/mac060-pins-macos-x86_64.json,
 # checked out read-only by the pinned actions/checkout with the deploy key secret passed ONLY by name as its
-# ssh-key input (persist-credentials false). This workflow's commit is the CI identity H123, never R. Public
-# logs carry only step/exit enums; the only artifact is $RUNNER_TEMP/public-summary. timeout-minutes 120 is
-# the user-approved cap (0.5.122 measured: arm64 33.9 min macos-26, x86_64 106.8 min macos-15-intel).
+# ssh-key input (persist-credentials false). This workflow's commit is the CI identity H060, never R. Public
+# logs carry only step/exit enums; the only artifact is $RUNNER_TEMP/public-summary. timeout-minutes
+# 120 is the user-approved cap (0.5.123 R3 measured: arm64 51.5 min macos-26, x86_64 80.1 min macos-15-intel).
 on:
   workflow_dispatch: {}
 permissions:
   contents: read
 concurrency:
-  group: stackbite-native-macos-intel-123
+  group: stackbite-native-macos-intel-060
   cancel-in-progress: false
 jobs:
   native-intel:
@@ -26,7 +27,7 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'
-      SB123_PLATFORM: macos-x86_64
+      SB060_PLATFORM: macos-x86_64
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,7 +37,7 @@ jobs:
       - name: Read pinned private source commit
         id: pin
         run: |
-          c="$(python3 -I -B ci/native123-macos/mac123.py pin source.commit)"
+          c="$(python3 -I -B ci/native060-macos/mac060.py pin source.commit)"
           [[ "$c" =~ ^[0-9a-f]{40}$ ]]
           echo "commit=$c" >> "$GITHUB_OUTPUT"
       - name: Check out pinned private source
@@ -54,14 +55,14 @@ jobs:
           python-version: '3.12'
           architecture: x64
       - name: Native Intel x86_64 build, audits, runtime QA, lifecycle, trust, connect and ordinary PTY
-        run: bash ci/native123-macos/mac123-job.sh
+        run: bash ci/native060-macos/mac060-job.sh
       - name: Seal private diagnostics for local decryption
         if: always()
-        run: bash ci/native123-macos/seal123.sh
+        run: bash ci/native060-macos/seal060.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: native-macos-intel-123-${{ github.run_id }}
+          name: native-macos-intel-060-${{ github.run_id }}
           path: ${{ runner.temp }}/public-summary
           retention-days: 3
           if-no-files-found: error
