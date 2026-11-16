@@ -12,6 +12,9 @@ run-name: native-macos-arm64-060-${{ github.run_id }}
 # ssh-key input (persist-credentials false). This workflow's commit is the CI identity H060, never R. Public
 # logs carry only step/exit enums; the only artifact is $RUNNER_TEMP/public-summary. timeout-minutes
 # 120 is the user-approved cap (0.5.123 R3 measured: arm64 51.5 min macos-26, x86_64 80.1 min macos-15-intel).
+# RREL42 R3 DELTA (tools/derive_r3.py): H060 83ef6d1f with only this comment and the job-step label changed;
+# the job body omits the pinned reused-R2 steps (mac060.py R3_OMITTED) and adds preflight-2. Names, ids,
+# runner, 120 min timeout, trigger, permissions, concurrency, secret, actions and artifact are unchanged.
 on:
   workflow_dispatch: {}
 permissions:
@@ -54,7 +57,7 @@ jobs:
         with:
           python-version: '3.12'
           architecture: arm64
-      - name: Native arm64 build, audits, runtime QA, lifecycle, trust, connect and ordinary PTY
+      - name: Native arm64 R3 delta build, audits, runtime QA, lifecycle, R3 regression and ordinary PTY
         run: bash ci/native060-macos/mac060-job.sh
       - name: Seal private diagnostics for local decryption
         if: always()

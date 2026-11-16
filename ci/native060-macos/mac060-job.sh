@@ -1,4 +1,8 @@
 #!/bin/bash
+# RREL42 R3 DELTA (tools/derive_r3.py): the EXECUTED 0.6.0 R2 job body of H060 83ef6d1f with only these edits:
+# the steps in mac060.py R3_OMITTED are not invoked (their R2 receipts are pinned as reused_r2_not_run_r3, never
+# R3 native execution) and ONE added step, preflight-2, runs the Root-pinned R3 regression natively. Every other
+# step, flag, lane, MSRV, audit, lifecycle, seal and the CMS envelope are byte-unchanged.
 # RREL04 (tools/derive_mac.py): the EXECUTED 0.5.123 R3 job body of H3 7e77f771 with only literal
 # version/baseline/name substitutions (sb060 venv, q060 QA roots, old123 baseline, mac060.py)
 # and ONE added flag: the final build passes --runtime-capsule-catalog "$W/inputs/runtime-capsules.json"
@@ -294,6 +298,25 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps(r,sort_keys=True)+'\n')
 PYHOST
 }
 step preflight-1 macos_process_preflight
+# RREL42/RREL49 preflight-2: the Root-pinned R3 regression (stackbite-launcher --lib, pins r3_delta.regression),
+# discovered and executed on this native Mac in the SAME preflight-target dev graph preflight-1 compiled for
+# stackbite-launcher --lib. Selection is libtest `--exact` with each pinned required test as its own argv word
+# (names are validated by the helper's pin check; read -a, no eval, no glob), so ignored child tests of the same
+# module are never selected; the listed set must equal the pinned set, nothing ignored, every test ok.
+r3_regression() {
+  local pkg names
+  local -a tests
+  pkg="$(helper pin r3_delta.regression.package)"
+  names="$(helper pin r3_delta.regression.required_tests)"
+  read -r -a tests <<< "$names"
+  test "${#tests[@]}" -ge 1
+  local T=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
+    --manifest-path rust/Cargo.toml --locked -p "$pkg" --lib)
+  "${T[@]}" -- --exact "${tests[@]}" --list --format terse < /dev/null > "$W/preflight-2.list"
+  "${T[@]}" -- --exact "${tests[@]}" --test-threads=1 < /dev/null | tee "$W/preflight-2.out"
+  helper regression --list "$W/preflight-2.list" --run "$W/preflight-2.out" --out "$OUT/preflight-2.json"
+}
+step preflight-2 r3_regression
 
 # Full native stackbite-terminal-tui --lib (closes T01). Same toolchain, RUSTC and preflight-target as the
 # preflights, so the shared debug test graph is not compiled twice; the release lanes build separately.
@@ -310,7 +333,7 @@ tui_lib() {
   helper tui-lib --list "$W/tui-lib.list" --ignored "$W/tui-lib.ignored" --run "$W/tui-lib.out" \
     --out "$OUT/tui-lib.json"
 }
-step tui-lib tui_lib
+# RREL42 R3 delta: step tui-lib is NOT run (R2 receipt pinned as reused_r2_not_run_r3).
 
 step rust "$PY" scripts/build_rust_terminal.py --source "$SRC" --version "$VERSION" --toolchain "$TC" --target "$TARGET" \
   --cargo "$C/cargo" --rustc "$C/rustc" --msrv-cargo "$M/cargo" --msrv-rustc "$M/rustc" --lane-mode sequential \
@@ -332,9 +355,7 @@ step lifecycle-single "$PY" -B "$SRC/scripts/qa/lifecycle_regression.py" --bundl
   --expect-commit "$SOURCE_COMMIT" --expect-version "$VERSION"
 step lifecycle-update "$PY" -B "$SRC/scripts/qa/lifecycle_regression.py" --bundle "$BUNDLE" --qa-root "$Q/lu" \
   --expect-commit "$SOURCE_COMMIT" --expect-version "$VERSION" --old-bundle "$W/old123/$OLD_TOP"
-step provider-trust "$PY" -B "$D/drivers/package-native-trust-adapted.py" --source "$SRC" --package "$BUNDLE" \
-  --cargo "$C/cargo" --rustc "$C/rustc" --target-dir "$W/rust-cache" --receipt "$OUT/$PLATFORM-provider-trust.json"
-step connect-native-tests "$PY" -B "$D/drivers/connect-native-qa121.py" --source "$SRC" --package "$BUNDLE" \
-  --cache "$W/rust-cache" --cargo "$C/cargo" --rustc "$C/rustc" --receipt "$OUT/$PLATFORM-connect-native-tests.json"
+# RREL42 R3 delta: step provider-trust is NOT run (R2 receipt pinned as reused_r2_not_run_r3).
+# RREL42 R3 delta: step connect-native-tests is NOT run (R2 receipt pinned as reused_r2_not_run_r3).
 step ordinary "$PY" -B "$D/drivers/ordinary-posix121.py" "$Q/rq"
 step end-source vhelper end-source --src "$SRC" --work "$W" --out "$OUT"
