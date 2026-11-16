@@ -1,5 +1,5 @@
 {
-  "schema": "stackbite.native060.macos-pins.v1",
+  "schema": "stackbite.native060.macos-r3delta-pins.v1",
   "version": "0.6.0",
   "baseline_version": "0.5.123",
   "platform": "macos-x86_64",
@@ -11,8 +11,8 @@
     "repository": "shinick-dev/stackbite",
     "visibility": "private",
     "checkout_path": ".ci-private-source",
-    "commit": "19a2fa8b1f710457f37aea7f03db49261fc3b76c",
-    "tree": "7b603e77d231b73fcbed7f039869e6138cfe6972"
+    "commit": "e5ad83aa8d9205de987c3027b0b454ea0d0f48cd",
+    "tree": "8b6d312a87cc84a71606f57004bc304375f8e8c3"
   },
   "source_package_version": "0.5.123",
   "toolchain": "1.98.1",
@@ -83,7 +83,64 @@
   },
   "runtime_capsule_catalog": {
     "path": "runtime-capsules.json",
-    "sha256": "723220e30af915c35cb84b1684b6752cb98f2cf8cf353e8e4fd42e4d14c0d955",
+    "sha256": "9b20101960055cd140b32dca9dabebffe86b7d954aef6c0172ac5d9aacbe9f7c",
     "size": 506
+  },
+  "r3_delta": {
+    "schema": "stackbite.rrel42.r3-delta.v1",
+    "executed_steps": [
+      "ci",
+      "host",
+      "credentials",
+      "source",
+      "venv",
+      "anchor",
+      "inputs",
+      "toolchain-1.98.1",
+      "toolchain-1.85.1",
+      "llvm-tools-1.98.1",
+      "strip-probe",
+      "preflight-0",
+      "preflight-1",
+      "preflight-2",
+      "rust",
+      "portable",
+      "audit",
+      "runtime-qa",
+      "runtime-check",
+      "lifecycle-single",
+      "lifecycle-update",
+      "ordinary",
+      "end-source"
+    ],
+    "reused_r2_not_run_r3": [
+      "tui-lib",
+      "provider-trust",
+      "connect-native-tests"
+    ],
+    "regression": {
+      "package": "stackbite-launcher",
+      "filter": "production::remote_runtime::entry_tests::",
+      "required_tests": [
+        "production::remote_runtime::entry_tests::entry_waits_for_its_bridge_then_releases_its_capsule_hold",
+        "production::remote_runtime::entry_tests::managed_entry_bridge_that_cannot_start_refuses_and_releases_its_hold"
+      ]
+    },
+    "r2_evidence": {
+      "product_commit": "19a2fa8b1f710457f37aea7f03db49261fc3b76c",
+      "product_tree": "7b603e77d231b73fcbed7f039869e6138cfe6972",
+      "ci_commit": "83ef6d1f291ce9b5bd331a806fab6f3293ab9fcb",
+      "run_id": "43802495647",
+      "run_attempt": "1",
+      "final_sha256": "6ca48e35cfd69cea69a9d27e69ad2383c22a865209aba75a938c8bb52a1e224e",
+      "archive_sha256": "4734c6f81c65f021fdbb897a51c95bf5758379c86c049fbe0f0963e9b6ec0021",
+      "receipts": {
+        "tui-lib.json": "4398f13d2c46a1d85c85b5027c1a673160a204017a92970a5d5c160122721139",
+        "macos-x86_64-provider-trust.json": "df2673dc65738700e8b90c76d226362660da34da7f62c2fea5b2b1e6f80fc58e",
+        "macos-x86_64-provider-trust.test-adapter.json": "4655f533c9cbce222b2102835b8c20f78133d0793eb6ac3ff024722553277a83",
+        "macos-x86_64-connect-native-tests.json": "0ae2f2024423e3018da27dbfef126fcb90b591836885d6f3fe06772d7960459f"
+      }
+    },
+    "closure_proof_sha256": "6a7bf1f740adec846bdf3fa508ac213c74e43a23fd25e1498f04974b285bc535"
   }
 }

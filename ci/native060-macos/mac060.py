@@ -1,4 +1,12 @@
-"""Native macOS 0.6.0 helper (RREL04, tools/derive_mac.py): the EXECUTED 0.5.123 R3 helper of H3
+"""Native macOS 0.6.0 R3 DELTA helper (RREL42, tools/derive_r3.py): the EXECUTED 0.6.0 R2 helper of H060
+83ef6d1f (ARM run 43802492452 macos-26 47.4 min, Intel run 43802495647 macos-15-intel 86.6 min, both success,
+25 steps) with only the anchored delta edits listed in derive_r3.py. The steps in R3_OMITTED are NOT run for
+R3: their R2 receipts (a different product commit) are pinned in r3_delta.r2_evidence and reported as
+`reused_r2_not_run_r3`, never as R3 native execution. `preflight-2` runs the Root-pinned R3 regression natively.
+Pins/result/public schemas are delta-specific so no delta receipt is ever read as a full-harness one.
+The 0.6.0 description follows unchanged.
+
+Native macOS 0.6.0 helper (RREL04, tools/derive_mac.py): the EXECUTED 0.5.123 R3 helper of H3
 7e77f771 (0.5.123 R3: ARM run 43575683946 macos-26 51.5 min, Intel run 43575686199 macos-15-intel 80.1 min, both success, 25 steps each) with only the literal version/baseline/name
 substitutions and the runtime-capsule-catalog insertions listed in derive_mac.py.
 Update baseline = the published, digest-pinned 0.5.123 archive (old123).
@@ -74,10 +82,10 @@ import argparse, hashlib, importlib.util, json, os, pathlib, platform, re, shuti
 HERE = pathlib.Path(__file__).resolve().parent
 PRIVATE_CHECKOUT = '.ci-private-source'
 PLATFORM_ENV = 'SB060_PLATFORM'
-PUBLIC_SCHEMA = 'stackbite.native060.macos-public-summary.v1'
+PUBLIC_SCHEMA = 'stackbite.native060.macos-r3delta-public-summary.v1'
 ARCHIVE_NAME = re.compile(r'stackbite-0\.6\.0-macos-(arm64|x86_64)-[0-9a-f]{12}\.tar\.gz').fullmatch
-SCHEMA = 'stackbite.native060.macos-pins.v1'
-RESULT_SCHEMA = 'stackbite.native060.macos-result.v1'
+SCHEMA = 'stackbite.native060.macos-r3delta-pins.v1'
+RESULT_SCHEMA = 'stackbite.native060.macos-r3delta-result.v1'
 HARNESS = 'ci/native060-macos'
 VERSION, BASELINE = '0.6.0', '0.5.123'
 
@@ -134,8 +142,8 @@ REMOTE_BINS = ('stackbite-remote', 'stackbite-remote-bridge')
 MACHO_MAGICS = (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
 # The job script runs exactly these steps in this order (tests compare the script to this list).
 STEPS = ('ci', 'host', 'credentials', 'source', 'venv', 'anchor', 'inputs', 'toolchain-1.98.1', 'toolchain-1.85.1',
-         'llvm-tools-1.98.1', 'strip-probe', 'preflight-0', 'preflight-1', 'tui-lib', 'rust', 'portable', 'audit', 'runtime-qa', 'runtime-check',
-         'lifecycle-single', 'lifecycle-update', 'provider-trust', 'connect-native-tests', 'ordinary', 'end-source')
+         'llvm-tools-1.98.1', 'strip-probe', 'preflight-0', 'preflight-1', 'preflight-2', 'rust', 'portable',
+         'audit', 'runtime-qa', 'runtime-check', 'lifecycle-single', 'lifecycle-update', 'ordinary', 'end-source')
 # Evidence files: (copied name in ci-out, '{platform}' = pins platform; source relative to the QA parent).
 COLLECT = (('{platform}-runtime-qa.json', 'rq/qualification.json'),
            ('{platform}-runtime-qa-failure.json', 'rq/failure.json'),
@@ -144,11 +152,10 @@ COLLECT = (('{platform}-runtime-qa.json', 'rq/qualification.json'),
            ('{platform}-ordinary-entry.json', 'rq/ordinary-entry-proof.json'),
            ('{platform}-ordinary-stages.jsonl', 'rq/ordinary-stages.jsonl'))
 REQUIRED = ('ci.json', 'host.json', 'source.json', 'inputs.json', 'strip-probe.json', 'preflight-0.json',
-            'preflight-1.json', 'tui-lib.json', 'audit.json', '{platform}-rust-manifest.json',
+            'preflight-1.json', 'preflight-2.json', 'audit.json', '{platform}-rust-manifest.json',
             '{platform}-bundle-manifest.json', '{platform}-runtime-qa.json', 'runtime-check.json',
-            '{platform}-lifecycle-single.json', '{platform}-lifecycle-update.json',
-            '{platform}-provider-trust.json', '{platform}-provider-trust.test-adapter.json',
-            '{platform}-connect-native-tests.json', '{platform}-ordinary-entry.json', 'end-source.json')
+            '{platform}-lifecycle-single.json', '{platform}-lifecycle-update.json', '{platform}-ordinary-entry.json',
+            'end-source.json')
 HEX40, HEX64 = re.compile('[0-9a-f]{40}').fullmatch, re.compile('[0-9a-f]{64}').fullmatch
 # Strip probe (rust-lang/rust#164063: rust-objcopy loads LLVM through an RPATH into the toolchain's host
 # lib directory, which only the official llvm-tools component populates; fixed by rust-lang/rust#164134).
@@ -230,6 +237,7 @@ def load_pins(path):
                   for p in pins['preflights'])
           and rev.get('path') == lane['reviewed'] and pins.get('build_requirements') == lane['requirements'])
     ok = ok and valid_catalog_pin(pins.get('runtime_capsule_catalog'))
+    ok = ok and valid_r3_delta(pins.get('r3_delta'), pins)
     if not ok:
         fail('mac060 pins are incomplete or inconsistent')
     return pins
@@ -250,6 +258,60 @@ def reviewed_pins(pins, here=HERE):
 def valid_catalog_pin(pin):
     return (isinstance(pin, dict) and set(pin) == {'path', 'sha256', 'size'} and pin['path'] == CATALOG
             and HEX64(str(pin['sha256'])) is not None and type(pin['size']) is int and 0 < pin['size'] <= CATALOG_MAX)
+
+
+# RREL42 R3 delta. R2_* are the executed H060 R2 identities; the omitted steps' receipts are R2 facts only.
+R2_STEPS = ('ci', 'host', 'credentials', 'source', 'venv', 'anchor', 'inputs', 'toolchain-1.98.1',
+            'toolchain-1.85.1', 'llvm-tools-1.98.1', 'strip-probe', 'preflight-0', 'preflight-1', 'tui-lib', 'rust',
+            'portable', 'audit', 'runtime-qa', 'runtime-check', 'lifecycle-single', 'lifecycle-update',
+            'provider-trust', 'connect-native-tests', 'ordinary', 'end-source')
+R3_OMITTED = ('tui-lib', 'provider-trust', 'connect-native-tests')
+
+R2_PRODUCT = ('19a2fa8b1f710457f37aea7f03db49261fc3b76c', '7b603e77d231b73fcbed7f039869e6138cfe6972')
+R2_CI_COMMIT = '83ef6d1f291ce9b5bd331a806fab6f3293ab9fcb'
+R2_RUNS = {'macos-arm64': '43802492452', 'macos-x86_64': '43802495647'}
+OMITTED_RECEIPTS = {'tui-lib': ('tui-lib.json',), 'provider-trust': ('{platform}-provider-trust.json', '{platform}-provider-trust.test-adapter.json'), 'connect-native-tests': ('{platform}-connect-native-tests.json',)}
+R3_DELTA_SCHEMA = 'stackbite.rrel42.r3-delta.v1'
+R3_REGRESSION_PACKAGE = 'stackbite-launcher'
+TEST_FILTER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*(::)?').fullmatch
+TEST_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)+').fullmatch
+
+
+def valid_r3_delta(delta, pins):
+    """Strict delta pin: the compiled step lists, the Root-pinned regression and the R2 evidence of THIS lane."""
+    if not isinstance(delta, dict) or set(delta) != {'schema', 'executed_steps', 'reused_r2_not_run_r3', 'regression',
+                                                     'r2_evidence', 'closure_proof_sha256'}:
+        return False
+    reg, ev = delta['regression'], delta['r2_evidence']
+    platform = pins.get('platform')
+    receipts = {r.format(platform=platform) for s in R3_OMITTED for r in OMITTED_RECEIPTS[s]}
+    src = pins.get('source') or {}
+    return (delta['schema'] == R3_DELTA_SCHEMA and delta['executed_steps'] == list(STEPS)
+            and delta['reused_r2_not_run_r3'] == list(R3_OMITTED)
+            and set(STEPS) | set(R3_OMITTED) == set(R2_STEPS) | {'preflight-2'} and not set(STEPS) & set(R3_OMITTED)
+            and HEX64(str(delta['closure_proof_sha256'])) is not None
+            and isinstance(reg, dict) and set(reg) == {'package', 'filter', 'required_tests'}
+            and reg['package'] == R3_REGRESSION_PACKAGE and isinstance(reg['filter'], str) and TEST_FILTER(reg['filter'])
+            and isinstance(reg['required_tests'], list) and reg['required_tests']
+            and len(set(reg['required_tests'])) == len(reg['required_tests'])
+            and all(isinstance(t, str) and TEST_NAME(t) and t.startswith(reg['filter']) for t in reg['required_tests'])
+            and isinstance(ev, dict) and set(ev) == {'product_commit', 'product_tree', 'ci_commit', 'run_id', 'run_attempt',
+                                                    'final_sha256', 'archive_sha256', 'receipts'}
+            and (ev['product_commit'], ev['product_tree']) == R2_PRODUCT and ev['ci_commit'] == R2_CI_COMMIT
+            and ev['run_id'] == R2_RUNS.get(platform) and ev['run_attempt'] == '1'
+            and src.get('commit') not in (R2_PRODUCT[0], R2_CI_COMMIT) and src.get('tree') != R2_PRODUCT[1]
+            and all(HEX64(str(ev[k])) for k in ('final_sha256', 'archive_sha256'))
+            and isinstance(ev['receipts'], dict) and set(ev['receipts']) == receipts
+            and all(HEX64(str(v)) for v in ev['receipts'].values()))
+
+
+def r3_delta_record(pins):
+    delta = pins['r3_delta']
+    return dict(schema=R3_DELTA_SCHEMA, executed_steps=list(STEPS), reused_r2_not_run_r3=list(R3_OMITTED),
+                reuse_claim='omitted steps were NOT run for this product; the pinned receipts are R2 native evidence of '
+                            'product ' + R2_PRODUCT[0] + ' and never count as R3 native execution',
+                r2_evidence=delta['r2_evidence'], regression=delta['regression'],
+                closure_proof_sha256=delta['closure_proof_sha256'])
 
 
 def check_catalog(raw, pins):
@@ -388,7 +450,7 @@ def mode_plan(args, pins):
                 reviewed_pins_sha256=pins['macos_reviewed_pins_file']['sha256'], steps=list(STEPS),
                 old123=dict((k, pins['old123'][k]) for k in ('name', 'sha256', 'size', 'commit')), published=list(published(pins)),
                 contract_keys=sorted(contract_pins(pins, reviewed)),
-                runtime_capsule_catalog=catalog_record(runtime_catalog(pins)))
+                runtime_capsule_catalog=catalog_record(runtime_catalog(pins)), r3_delta=r3_delta_record(pins))
     if args.source:
         src = pathlib.Path(args.source)
         head = (git(src, 'rev-parse', 'HEAD'), git(src, 'rev-parse', 'HEAD^{tree}'))
@@ -715,6 +777,30 @@ def mode_count(args, pins):
     print(json.dumps(doc))
 
 
+def mode_regression(args, pins):
+    """RREL42/RREL49 preflight-2: the Root-pinned R3 regression ran natively, selected by `--exact <each pinned
+    required test>`: the discovered set is EXACTLY the pinned required_tests (no extra, no missing, no duplicate),
+    no ignored test, every one ran once and is ok. reg.filter is only the validated naming prefix of the pins."""
+    list_text = pathlib.Path(args.list).read_text(encoding='utf-8', errors='replace')
+    run_text = pathlib.Path(args.run).read_text(encoding='utf-8', errors='replace')
+    doc = discovered_count(list_text, run_text, label='preflight-2', allow_ignored=False)
+    listed, status = LIST_LINE.findall(list_text), {}
+    for name, state in RUN_LINE.findall(run_text):
+        status.setdefault(name, []).append(state)
+    reg = pins['r3_delta']['regression']
+    required = reg['required_tests']
+    if len(listed) != len(required) or set(listed) != set(required):
+        fail('preflight-2', 'the exact selection differs from the pinned required tests',
+             dict(extra=sorted(set(listed) - set(required))[:5], missing=sorted(set(required) - set(listed))[:5]))
+    bad = [t for t in required if status.get(t) != ['ok']]
+    if bad or set(status) != set(required) or doc['passed'] != len(required) or doc['ignored'] != 0:
+        fail('preflight-2', 'a pinned R3 regression test did not run exactly once and pass', bad)
+    doc.update(package=reg['package'], filter=reg['filter'], required_tests=required, selection='--exact',
+               list_sha256=sha256(args.list), run_sha256=sha256(args.run))
+    write_json(args.out, doc)
+    print(json.dumps(dict(listed=doc['listed'], passed=doc['passed'], required=len(reg['required_tests']))))
+
+
 def macho_files(bundle):
     rows = {}
     for path in sorted(pathlib.Path(bundle).rglob('*')):
@@ -825,6 +911,7 @@ def final_document(*, pins, out, steps, job_exit, ci, source_end, copied):
                 baseline_version=pins['baseline_version'], baseline_archive=pins['old123']['name'], ci_workflow=pins['workflow'],
                 runner=host, archive=audit.get('archive'), steps=steps, expected_steps=list(STEPS),
                 failed_steps=[s.get('step') for s in failed], missing_receipts=missing, collected=copied, receipts=receipts,
+                r3_delta=r3_delta_record(pins),
                 signed=False, published=False, private_key_used=False, secrets_used=False)
 
 
@@ -1024,6 +1111,7 @@ def mode_public(args, pins):
                    failed_steps=[s['step'] for s in steps if s['exit'] != 0],
                    missing_receipts=sorted(r for r in (doc.get('missing_receipts') or []) if r in required),
                    archive=uploaded, private_diagnostics='seal060.sh: private-diagnostics.cms + diagnostics-envelope.json',
+                   r3_delta=r3_delta_record(pins),
                    signed=False, published=False, secrets_in_summary=False)
     write_json(pub / 'public-summary.json', summary)
     print(json.dumps(dict(passed=passed, platform=pins['platform'], failed_steps=summary['failed_steps'],
@@ -1060,6 +1148,9 @@ def main(argv=None):
     public = sub.add_parser('public')
     public.add_argument('--out', required=True)
     public.add_argument('--pub', required=True)
+    reg = sub.add_parser('regression')
+    for option in ('--list', '--run', '--out'):
+        reg.add_argument(option, required=True)
     tui = sub.add_parser('tui-lib')
     for option in ('--list', '--ignored', '--run', '--out'):
         tui.add_argument(option, required=True)
@@ -1067,7 +1158,8 @@ def main(argv=None):
     pins = load_pins(pins_path())
     {'plan': mode_plan, 'pin': mode_pin, 'ci': mode_ci, 'host': mode_host, 'source': mode_source, 'inputs': mode_inputs,
      'strip-probe': mode_strip_probe, 'count': mode_count, 'audit': mode_audit, 'runtime': mode_runtime, 'end-source': mode_end_source, 'final': mode_final,
-     'credscan': mode_credscan, 'public': mode_public, 'tui-lib': mode_tui_lib}[args.mode](args, pins)
+     'credscan': mode_credscan, 'public': mode_public, 'tui-lib': mode_tui_lib,
+     'regression': mode_regression}[args.mode](args, pins)
 
 
 if __name__ == '__main__':
