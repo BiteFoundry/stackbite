@@ -1,7 +1,7 @@
 {
   "schema": "stackbite.native060.macos-r5full-pins.v1",
-  "version": "0.6.0",
-  "baseline_version": "0.5.123",
+  "version": "0.7.0",
+  "baseline_version": "0.6.0",
   "platform": "macos-arm64",
   "target": "aarch64-apple-darwin",
   "runner": "macos-26",
@@ -11,8 +11,8 @@
     "repository": "shinick-dev/stackbite",
     "visibility": "private",
     "checkout_path": ".ci-private-source",
-    "commit": "060019651abe60485a0cc39e72d99e8756e4aea2",
-    "tree": "3f6ab2522ee7e4d6b51ec53d9984ff4089584b01"
+    "commit": "c3c809785bb467e6755a901351a8ef3a56d4764f",
+    "tree": "4bd3f065ec3d4747de8e0d4407941918a48e6395"
   },
   "source_package_version": "0.6.0",
   "toolchain": "1.98.1",
@@ -28,13 +28,13 @@
     "stackbite-tui"
   ],
   "old123": {
-    "name": "stackbite-0.5.123-macos-arm64-e4438e45b5be.tar.gz",
-    "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.5.123/stackbite-0.5.123-macos-arm64-e4438e45b5be.tar.gz",
-    "sha256": "9bd560e56e2dd963b3618360fddef50136036d85882874de2d519718837cd2d3",
-    "size": 26972046,
-    "version": "0.5.123",
-    "commit": "e4438e45b5bedaa1729ef6672c484d7db38bf59e",
-    "source_tree": "1e99858efebfa4b85ac4d68f93c8698c3e8c2e9d"
+    "name": "stackbite-0.6.0-macos-arm64-060019651abe.tar.gz",
+    "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.6.0/stackbite-0.6.0-macos-arm64-060019651abe.tar.gz",
+    "sha256": "4aafd7acb577c91fd3b16c15d27dced9226a2c72462682e0cbe61f2c3e54d639",
+    "size": 28588383,
+    "version": "0.6.0",
+    "commit": "060019651abe60485a0cc39e72d99e8756e4aea2",
+    "source_tree": "3f6ab2522ee7e4d6b51ec53d9984ff4089584b01"
   },
   "core": {
     "directory": "private_pty/_native/terminal-core",
@@ -83,8 +83,8 @@
   },
   "runtime_capsule_catalog": {
     "path": "runtime-capsules.json",
-    "sha256": "75ffdeefb4716bb2ee0baedef9201731fbf9b7aa2e0159cc4e8f087fc17c7020",
-    "size": 506
+    "sha256": "15d5acc4499fa9339fe25616955e6cffb83847201ad3a595654c2b02183f97db",
+    "size": 507
   },
   "placed_wire": {
     "package": "stackbite-management",
