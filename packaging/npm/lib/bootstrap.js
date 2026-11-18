@@ -11,6 +11,7 @@ const { extractArchive } = require('./archive');
 const { cacheDirectory, existingCacheDirectory, resolveCacheDirectory } = require('./cache');
 const { parseSetup, stageReporter } = require('./setup');
 const timing = require('./startup-timing');
+const payloadProof = require('./payload-proof');
 const packageVersion = require('../../../package.json').version;
 
 // Only a glibc Linux host (or an injected runtime report) may select the Linux release.
@@ -74,8 +75,10 @@ function expectedMembers(hashes) {
 }
 // Walks the payload; every file or in-root link must resolve to a bounded regular file and pinned members must match.
 // No caller has other pending work while a payload is validated, so the walk and the member reads
-// are synchronous; every selected member is still hashed in full on every call.
-function payloadFiles(root, expected, hashes, includePhone) {
+// are synchronous; every selected member is hashed in full unless the caller holds the stored
+// proof of an earlier full validation of these exact files (payload-proof.js). `stamps`
+// receives what identifies each file of the walk, taken after its hash.
+function payloadFiles(root, expected, hashes, includePhone, { stamps = null, hash = true } = {}) {
   const actual = new Set();
   let total = 0, entries = 0, hashError = null;
   function checkHash(relative, resolved) {
@@ -103,7 +106,8 @@ function payloadFiles(root, expected, hashes, includePhone) {
       total += resolvedInfo.size;
       if (total > LIMITS.expanded) fail('Cached release exceeds expansion limit');
       actual.add(relative);
-      if (expected.has(relative)) checkHash(relative, resolved);
+      if (hash && expected.has(relative)) checkHash(relative, resolved);
+      if (stamps) stamps.push(payloadProof.stamp(relative, resolved));
     }
   }
   // A walk failure takes precedence (it throws past any recorded member failure);
@@ -195,14 +199,30 @@ function declaresPhone(expected) {
   if (phone && !expected.has(PHONE_COMPONENTS)) fail('Release Phone component manifest is not pinned');
   return phone;
 }
-async function validatePayload(directory, spec, { includePhone = true } = {}) {
+// `proof` (payload-proof.js select) lets a warm start take the stored proof of an
+// earlier full validation instead of hashing every member again.
+async function validatePayload(directory, spec, { includePhone = true, proof = null } = {}) {
   const root = await payloadRoot(directory);
   const { hashes, metadata } = await pinnedDocuments(root, spec);
   const expected = expectedMembers(hashes);
   // Only a declared Phone component may be deferred to its activation check.
   const deferPhone = declaresPhone(expected) && !includePhone;
   if (deferPhone) for (const name of expected) if (name.startsWith('phone/')) expected.delete(name);
-  const actual = payloadFiles(root, expected, hashes, !deferPhone);
+  let actual;
+  if (!proof) actual = payloadFiles(root, expected, hashes, !deferPhone);
+  else {
+    // Every walk check runs; only the member hashes wait on the record.
+    const before = [];
+    actual = payloadFiles(root, expected, hashes, !deferPhone, { stamps: before, hash: false });
+    const claimed = payloadProof.claim(root, spec, deferPhone, before);
+    proof.taken = !proof.renew && payloadProof.holds(proof, root, claimed);
+    if (!proof.taken) {
+      const after = [];
+      actual = payloadFiles(root, expected, hashes, !deferPhone, { stamps: after });
+      // Recorded only for files that were the same before and after their hash.
+      if (payloadProof.claim(root, spec, deferPhone, after) === claimed) payloadProof.keep(proof, root, claimed);
+    }
+  }
   await checkMemberSet(root, spec, hashes, expected, actual);
   await checkProductIdentity(root, spec, metadata);
   return publicExecutable(root, spec, hashes);
@@ -217,15 +237,33 @@ function installationRoot(environment, platform) {
 }
 // Resolve only user-selected directory roots. Managed descendants, including
 // the installation root and update directory, must still be real directories.
-async function selectedDirectory(directory, environment, platform) {
+function selectedRoot(directory, environment, platform) {
   const home = environment.USERPROFILE || environment.HOME || os.homedir();
   const data = platform === 'win32' ? environment.LOCALAPPDATA || home
     : environment.XDG_DATA_HOME || path.join(environment.HOME || home, '.local', 'share');
-  const roots = [data, home].map(root => path.resolve(root)).sort((a, b) => b.length - a.length);
-  const selected = roots.find(root => directory === root || inside(root, directory));
+  // The launcher directory is a platform location too: a linked ~/.local or
+  // ~/.local/bin is the user's layout, resolved once like the other roots.
+  const roots = [data, home, path.join(home, '.local', 'bin')].map(root => path.resolve(root)).sort((a, b) => b.length - a.length);
+  return roots.find(root => directory === root || inside(root, directory));
+}
+async function selectedDirectory(directory, environment, platform) {
+  const selected = selectedRoot(directory, environment, platform);
   if (!selected) return existingCacheDirectory(directory);
   const resolved = await resolveCacheDirectory(selected);
   return existingCacheDirectory(path.join(resolved, path.relative(selected, directory)));
+}
+// npm's own command link at the launcher path. npm runs its package from the
+// resolved path, so with npm's prefix at a linked ~/.local the package's
+// prefix is the link's target: the launcher name is compared there too, with
+// its user-selected root resolved once as selectedDirectory reads it. The link
+// object itself is the same, and ownCommandLink verifies it unchanged.
+async function ownLauncherLink(file, environment, platform, packageRoot) {
+  const { ownCommandLink } = require('./uninstall-registration');
+  if (await ownCommandLink(file, packageRoot, platform)) return true;
+  const directory = path.dirname(file), selected = selectedRoot(directory, environment, platform);
+  if (!selected) return false;
+  const resolved = path.join(await resolveCacheDirectory(selected), path.relative(selected, directory), path.basename(file));
+  return resolved !== file && ownCommandLink(resolved, packageRoot, platform);
 }
 // Before a runtime is available, read the SAME journal without creating any
 // product directory. The verified bundled engine repeats this under OS locks
@@ -324,7 +362,7 @@ async function captureBaseline(environment, platform, cachedHome, packageRoot) {
   const legacy = [];
   for (const file of new Set(paths)) {
     if (packageRoot && platform !== 'win32' && file === path.join(home, '.local', 'bin', 'stackbite')
-        && await exists(file) && await require('./uninstall-registration').ownCommandLink(file, packageRoot, platform)) continue;
+        && await exists(file) && await ownLauncherLink(file, environment, platform, packageRoot)) continue;
     legacy.push({ path: file, identity: await baselinePin(file, environment, platform) });
   }
   return legacy.some(pin => pin.identity !== null) ? { root, incarnation: null, legacy } : null;
@@ -501,8 +539,10 @@ async function reservePreparation(environment, platform, target, source) {
     await assertBaseline(environment, platform);
     return preparation;
   } catch (error) {
-    if (preparation) await settlePreparation(preparation, environment, platform, source);
-    else await handle.close();
+    // The refusal stays the outcome; a control file that could not be settled is debt.
+    await settleCleanup({ failed: true, error }, () => preparation
+      ? settlePreparation(preparation, environment, platform, source) : handle.close(),
+    { kind: 'installation preparation', path: file }, debtReporter(process.stderr));
     throw error;
   }
 }
@@ -674,6 +714,10 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
   const runtimeSelected = await selectedDirectory(runtime, environment, spec.platform);
   const target = runtimeSelected ? await pinnedTarget(runtime, spec) : path.join(runtime, runtimeName(spec));
   const preparation = !checkOnly ? await reservePreparation(environment, spec.platform, target, registrationSource) : null;
+  // The first failure of the work below is the outcome; cleanup failures are reported as debt.
+  const primary = { failed: false, error: undefined };
+  const reportDebt = options.cleanupReport || debtReporter(options.stderr || process.stderr);
+  const settled = installed => commandResolution(installed, spec, environment, options);
   try {
     if (registrationSource) await registrationSource.validate();
     if (!checkOnly) await assertBaseline(environment, spec.platform);
@@ -688,11 +732,14 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
         || (checkOnly ? (await existingCacheDirectory(cache) && await exists(legacy) ? legacy : former) : null);
     if (home) {
       if (checkOnly || reportCached) progress('validate');
-      const installed = { home, executable: await validatePayload(home, spec, { includePhone }) };
+      // Setup, removal and every publication below hash every member.
+      const proof = checkOnly || reportCached ? null : payloadProof.select(environment, installationRoot(environment, spec.platform));
+      const installed = { home, executable: await validatePayload(home, spec, { includePhone, proof }) };
+      if (proof?.taken) timing.mark(environment, 'launcher.payload_proof');
       // A selected image outside app/ is its own maintenance engine.
       if (!checkOnly) await publishImpl(home, target, spec, { ...options, environment, cache, existing: true });
       if (checkOnly || reportCached) progress('ready');
-      return installed;
+      return reportCached ? settled(installed) : installed;
     }
     if (checkOnly) throw notCached();
     // A verified previous-layout image is copied once into the durable target;
@@ -707,14 +754,15 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
       progress('validate-published');
       const installed = { home: target, executable: await validatePayload(target, spec) };
       progress('ready');
-      return installed;
+      return settled(installed);
     }
     // An owned system-temp stage keeps downloads out of product caches. Only the
     // verified engine below can create/publish a canonical cache installation.
     await admitPublication(environment, spec.platform);
     await assertBaseline(environment, spec.platform);
     if (registrationSource) await registrationSource.validate();
-    const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'stackbite-npm-'));
+    const staging = await createStage();
+    const staged = { failed: false, error: undefined };
     try {
       const { payload } = await stageRelease(spec, staging, { downloadImpl, extractImpl, progress });
       progress('publish');
@@ -726,11 +774,26 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
       progress('validate-published');
       const installed = { home: target, executable: await validatePayload(target, spec) };
       progress('ready');
-      return installed;
-    } finally { await removeStage(staging); }
-  } finally {
-    if (preparation) await settlePreparation(preparation, environment, spec.platform, registrationSource);
+      return settled(installed);
+    } catch (error) { staged.failed = true; staged.error = error; throw error; }
+    // A stage that cannot be removed never replaces the download/verify/publish
+    // error, and never fails a runtime that is already published and validated.
+    finally { await settleCleanup(staged, () => removeStage(staging), { kind: 'staging', path: staging }, reportDebt); }
+  } catch (error) { primary.failed = true; primary.error = error; throw error; }
+  finally {
+    // After a failure the unsettled control file is debt; after success its refusal still stands.
+    if (preparation) {
+      await settleCleanup(primary, () => settlePreparation(preparation, environment, spec.platform, registrationSource),
+        { kind: 'installation preparation', path: preparation.file, required: true }, reportDebt);
+    }
   }
+}
+// After setup or a first publication: name the stackbite command the shell
+// resolves when it is not this package's version. Advisory only; it never throws.
+async function commandResolution(installed, spec, environment, options) {
+  await (options.commandCheck || reportCommandResolution)({ spec, installed, environment,
+    packageRoot: options.packageRoot, spawnImpl: options.spawnImpl, stderr: options.stderr });
+  return installed;
 }
 function notCached() {
   return Object.assign(new Error('Pinned runtime is not cached; run stackbite setup.'), { code: 'STACKBITE_NOT_CACHED' });
@@ -752,11 +815,9 @@ async function stageRelease(spec, staging, { downloadImpl, extractImpl, progress
   progress('validate');
   return { payload, executable: await validatePayload(payload, spec) };
 }
-async function removeStage(staging) {
-  // Only this invocation's mkdtemp directory is owned.
-  if (path.dirname(staging) !== path.resolve(os.tmpdir()) || !path.basename(staging).startsWith('stackbite-npm-')) fail('Unsafe staging cleanup path');
-  await fs.rm(staging, { recursive: true, force: true });
-}
+// Stage ownership (this invocation's mkdtemp identity) and cleanup settlement.
+const { createStage, removeStage, settleCleanup, debtReporter } = require('./stage-cleanup');
+const { reportCommandResolution } = require('./command-resolution');
 // The fixed engine may hand removal to a helper started from its own image
 // (parent_resume.runtime). While the same journal still names that image, the
 // stage is the helper's runtime and stays; finalization removes the journal.
@@ -775,8 +836,9 @@ async function stageStillNeeded(pending, staging) {
 async function continueAcceptedRemoval(spec, argv, environment, options) {
   const pending = await acceptedRemovalWithoutCapsule(environment, spec.platform);
   if (!pending) return null;
-  const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'stackbite-npm-'));
+  const staging = await createStage();
   let retained = false;
+  const staged = { failed: false, error: undefined };
   try {
     const { payload, executable } = await stageRelease(spec, staging, {
       downloadImpl: options.downloadImpl || download, extractImpl: options.extractImpl || extractArchive,
@@ -790,9 +852,13 @@ async function continueAcceptedRemoval(spec, argv, environment, options) {
       ...(npm ? { STACKBITE_NPM_REGISTRATION: JSON.stringify(npm) } : {}),
       STACKBITE_HOME: path.resolve(payload) }, options);
     retained = await stageStillNeeded(pending, staging);
-    return registrationTools.settleWithoutNpm(argv, result, unavailable, options.platform || process.platform);
-  } finally {
-    if (!retained) await removeStage(staging);
+    return await registrationTools.settleWithoutNpm(argv, result, unavailable, options.platform || process.platform);
+  } catch (error) { staged.failed = true; staged.error = error; throw error; }
+  finally {
+    if (!retained) {
+      await settleCleanup(staged, () => removeStage(staging), { kind: 'staging', path: staging },
+        debtReporter(options.stderr || process.stderr));
+    }
   }
 }
 async function launchNative(executable, argv, environment, { spawnImpl = spawn, signalSource = process } = {}) {
@@ -824,6 +890,40 @@ async function coldAnswer(argv, spec, runtime, { stdout = process.stdout, stderr
   }
   return { code: 0, signal: null };
 }
+// A published image of this exact pin (its pinned documents verify) whose
+// payload validation fails with `error`. It is only read here, never run.
+// Anything else (absent, linked, another pin, another failure) is null.
+async function damagedRuntime(spec, runtime, environment, includePhone, error) {
+  try {
+    runtime = path.resolve(runtime);
+    if (!await selectedDirectory(runtime, environment, spec.platform)) return null;
+    const target = await pinnedTarget(runtime, spec);
+    if (!await exists(target)) return null;
+    await pinnedDocuments(await payloadRoot(target), spec);
+    try { await validatePayload(target, spec, { includePhone }); return null; }
+    catch (failure) {
+      return failure.message !== error.message ? null : { target, reason: failure.message,
+        again: () => damagedRuntime(spec, runtime, environment, includePhone, error) };
+    }
+  } catch { return null; }
+}
+// What a command gets when its runtime failed validation with `error`: the
+// pin's own answer, removal through a private verified copy, or the error with
+// the repair commands. Without a diagnosed damaged runtime the error stands.
+async function damagedOutcome(error, argv, spec, damaged, environment, options) {
+  if (!damaged) throw error;
+  const recovery = require('./damaged-runtime');
+  const result = recovery.answer(argv, spec, damaged, options)
+    || await recovery.remove(argv, spec, damaged, environment, {
+      stageRelease: (pinned, staging) => stageRelease(pinned, staging, {
+        downloadImpl: options.downloadImpl || download, extractImpl: options.extractImpl || extractArchive,
+        progress: options.progress || stageReporter(options.stderr || process.stderr) }),
+      createStage, removeStage, settleCleanup, launchNative, diagnose: damaged.again,
+      reportDebt: options.cleanupReport || debtReporter(options.stderr || process.stderr),
+      journal: path.join(installationRoot(environment, spec.platform), '.stackbite-uninstall.json') }, options);
+  if (result) return result;
+  throw recovery.explain(error, spec, damaged);
+}
 async function main(argv = process.argv.slice(2), options = {}) {
   const setup = parseSetup(argv);
   const removing = ['uninstall', 'delete'].includes(argv[0]);
@@ -841,7 +941,9 @@ async function main(argv = process.argv.slice(2), options = {}) {
   try {
     if (npm) environment.STACKBITE_NPM_REGISTRATION = JSON.stringify(npm);
     const spec = releaseSpec(manifest, platform, options.arch || process.arch, options);
-    const cold = await coldAnswer(argv, spec, options.runtime || runtimeDirectory(environment, platform), options);
+    const runtime = options.runtime || runtimeDirectory(environment, platform);
+    const includePhone = removing || Boolean(setup) || argv[0] === 'phone';
+    const cold = await coldAnswer(argv, spec, runtime, options);
     if (cold) return cold;
     // First install always verifies everything. Cached TUI/runtime starts defer only
     // a declared Phone component; explicit phone/setup/removal commands retain the
@@ -851,10 +953,11 @@ async function main(argv = process.argv.slice(2), options = {}) {
       environment, registrationSource,
       cache: options.cache || cacheDirectory(environment, platform),
       checkOnly: removing || setup?.checkOnly || false, reportCached: Boolean(setup), reuseSelected: !removing,
-      includePhone: removing || Boolean(setup) || argv[0] === 'phone',
+      includePhone,
       progress: options.progress || stageReporter(options.stderr || process.stderr) })); }
     catch (error) {
-      if (!removing) throw error;
+      const damaged = await damagedRuntime(spec, runtime, environment, includePhone, error);
+      if (!removing) return await damagedOutcome(error, argv, spec, damaged, environment, options);
       const { resumeWithoutRuntime, registrationOnly } = require('./uninstall-registration');
       const recovered = await resumeWithoutRuntime(argv, environment, launchNative, options);
       if (recovered) return recovered;
@@ -865,7 +968,7 @@ async function main(argv = process.argv.slice(2), options = {}) {
       }
       const registration = await registrationOnly(argv, environment, launchNative, options);
       if (registration) return registration;
-      throw error;
+      return await damagedOutcome(error, argv, spec, damaged, environment, options);
     }
     if (setup) return { code: 0, signal: null };
     timing.mark(environment, 'launcher.exec');

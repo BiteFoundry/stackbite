@@ -1,7 +1,10 @@
 # StackBite through npm and npx
 
-StackBite 0.6.0 supplies Windows x64, Linux x64 with glibc 2.28 or newer, and
-macOS 13 or newer on Apple Silicon and Intel. Node.js 20 or newer is required;
+StackBite 0.7.0 supplies Windows x64 and Linux x64 with glibc 2.28 or newer.
+macOS 0.7.0 bundles follow in a later release; on a Mac (macOS 13 or newer, Apple
+Silicon or Intel) install `stackbite@0.6.0` until then, because the 0.7.0
+launcher has no macOS runtime pin and stops with `Invalid pinned release asset`.
+Node.js 20 or newer is required;
 the current [Node.js LTS](https://nodejs.org/en/download) is recommended. Linux
 ARM and musl/Alpine builds are not supplied. Python installation and compilation
 are unnecessary. Archive extraction requires `tar` (included in macOS, current
@@ -31,6 +34,29 @@ launches reuse the prepared runtime and verify the selected payload. Running bot
 installation methods is unnecessary. The same preparation works through npx:
 `npx --yes stackbite@latest setup`.
 
+### Updating over an earlier installer-based installation
+
+An earlier StackBite installed with its own installer left a launcher in
+`~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). If that directory is
+ahead of npm's on `PATH`, typing `stackbite` keeps starting that older version,
+and npm runs no StackBite code during `npm install`. Run the npm package once,
+whatever `PATH` picks:
+
+```sh
+npx --yes stackbite@latest setup
+```
+
+When this prepares a newer runtime, StackBite points its own older launcher at
+it and prints one line per launcher on stderr (`Stackbite: the stackbite command
+at <path> started version <old>; it now starts version <new> ...`). Only a
+launcher StackBite's installer wrote, running a strictly older version of the
+same installation, is changed; its state directory is kept and the previous
+image is not removed. A newer or same-version launcher, another npm
+installation and any file StackBite cannot identify are left unchanged and
+reported with the exact next action instead. Set
+`STACKBITE_NPM_KEEP_LAUNCHERS=1` to keep launchers unchanged. Running it again
+changes and prints nothing.
+
 The launcher selects the verified native entry for your platform. The runtime
 contains the Rust frontend, Room management service and terminal owner; Python is
 not bundled or required. Keep the complete downloaded payload intact.
@@ -48,9 +74,19 @@ on Linux and macOS. Room/state data is separate. Downloads use owned system-temp
 staging; interrupted preparation can be retried, and an invalid existing runtime
 is reported and left in place.
 
+A prepared runtime at that location that fails verification is not run.
+`stackbite --version`, `stackbite --help` and `stackbite uninstall --help`
+still print the pinned version or a short usage on stdout, and the reason and
+repair commands on stderr: `stackbite uninstall --keep-data`, then
+`stackbite setup` (first `npm install --global stackbite@<version>` if removal
+also removed the npm command). They exit 1, not 0, because the installation is
+unusable. Other commands fail with the verification error followed by the same
+repair commands.
+
 ## Mac architecture
 
-The launcher uses Node.js `process.arch`: `arm64` selects the Apple Silicon
+StackBite 0.7.0 has no macOS bundles; this section applies to `stackbite@0.6.0`
+and to the later release that adds them. The launcher uses Node.js `process.arch`: `arm64` selects the Apple Silicon
 runtime and `x64` the Intel runtime. Use a native Node.js installation for your
 Mac architecture; an x64 Node.js process under Rosetta selects the Intel runtime,
 which is not native Intel qualification. Developer ID signing and notarization are not provided for the Mac bundles.
@@ -71,8 +107,13 @@ not change the npm package version.
 
 Preview product removal with `stackbite uninstall --preview` (`stackbite delete`
 is an alias). `stackbite uninstall` performs removal; add `--keep-data` to retain
-product data and hooks. Removal uses only an already cached verified runtime and
-never downloads one. It removes the verified global StackBite npm registration,
+product data and hooks. Removal uses an already cached verified runtime; with
+no runtime installed, a new removal downloads nothing. When the prepared runtime
+fails verification, `stackbite uninstall` and `stackbite uninstall --preview`
+download a private verified copy of the pinned runtime for that command only
+and run it instead of the damaged one. This needs access to GitHub release
+downloads; without it the command stops and nothing is run or removed. Removal
+removes the verified global StackBite npm registration,
 command shims and the owned local capsule cache. npm itself, unrelated packages,
 shared prefix directories and npx caches remain.
 
