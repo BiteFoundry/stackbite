@@ -11,8 +11,8 @@
     "repository": "shinick-dev/stackbite",
     "visibility": "private",
     "checkout_path": ".ci-private-source",
-    "commit": "4a70580ef0409ba6a2d164c53a8154553dada2be",
-    "tree": "c94f26b081ce2c0a89b22dc3494e7215e03f4277"
+    "commit": "14f12a563834bfb5654321328e0b9f3e78866024",
+    "tree": "fd12be4634325380333bef111e6701406e5d2f46"
   },
   "source_package_version": "0.6.0",
   "toolchain": "1.98.1",
@@ -83,7 +83,7 @@
   },
   "runtime_capsule_catalog": {
     "path": "runtime-capsules.json",
-    "sha256": "aba9eb6f939a5d271b6c106bd359991443f544ddeea2da8b80377900262cece4",
+    "sha256": "234948f7ca7c0e58585fbd18f150381a551db0733b1400cea545bee817cd0b33",
     "size": 507
   },
   "placed_wire": {
