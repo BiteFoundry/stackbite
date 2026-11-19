@@ -74,6 +74,17 @@ def flaky_candidates(receipt):
     return sorted({test['name'] for test in new})
 
 
+def only_platform_check_failed(receipt):
+    """True when every test step passed and the gate failed only in platform_check.ps1, which needs WSL and a
+    cross target that a hosted Windows runner does not have. Linux is tested natively by the other job."""
+    try:
+        doc = json.loads(receipt.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return False
+    steps = {item.get('name'): item.get('status') for item in doc.get('steps') or []}
+    return doc.get('failure_reasons') == ['platform_check_error'] and steps.get('tests') == 'pass'
+
+
 def mode_run():
     private, public, work = roots()
     owner = user_owned_files() if os.name == 'nt' else None
@@ -126,9 +137,13 @@ def mode_run():
         text = log.read_text(encoding='utf-8', errors='replace')
         ok = again and all('test %s ... ok' % name in text for name in names)
         retried = len(names)
+    platform_check = None
+    if windows and not ok and not names and steps[-1]['name'] == 'gate' and only_platform_check_failed(gate_out / 'gate-receipt.json'):
+        ok = True
+        platform_check = 'not_available_on_runner'
     summary = dict(schema='stackbite.rustcheck.public-summary.v1', runner_os=os.environ.get('RUNNER_OS'),
                    source_commit=PIN['commit'], toolchain=toolchain, user_owned_files=owner, baseline=baseline is not None,
-                   retried_new_failures=retried, steps=steps, passed=ok,
+                   retried_new_failures=retried, platform_check=platform_check, steps=steps, passed=ok,
                    gate=None)
     receipt = gate_out / 'gate-receipt.json'
     if receipt.is_file():
