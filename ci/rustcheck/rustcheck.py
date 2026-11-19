@@ -38,8 +38,33 @@ def step(steps, name, argv, log, cwd, timeout, env=None):
     return status == 'passed'
 
 
+def user_owned_files():
+    """Hosted Windows runners run elevated, so new files are owned by BUILTIN\\Administrators and the
+    product's owner-private checks refuse them. Make the user the default owner for this process tree."""
+    import ctypes
+    from ctypes import wintypes
+    adv = ctypes.WinDLL('advapi32', use_last_error=True)
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    adv.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    adv.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+                                        ctypes.POINTER(wintypes.DWORD)]
+    adv.SetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    token = wintypes.HANDLE()
+    if not adv.OpenProcessToken(kernel.GetCurrentProcess(), 0x88, ctypes.byref(token)):   # ADJUST_DEFAULT | QUERY
+        return False
+    size = wintypes.DWORD()
+    adv.GetTokenInformation(token, 1, None, 0, ctypes.byref(size))                         # TokenUser
+    buffer = ctypes.create_string_buffer(size.value)
+    if not adv.GetTokenInformation(token, 1, buffer, size, ctypes.byref(size)):
+        return False
+    owner = ctypes.c_void_p(ctypes.cast(buffer, ctypes.POINTER(ctypes.c_void_p))[0])
+    return bool(adv.SetTokenInformation(token, 4, ctypes.byref(owner), ctypes.sizeof(owner)))   # TokenOwner
+
+
 def mode_run():
     private, public, work = roots()
+    owner = user_owned_files() if os.name == 'nt' else None
     for d in (private, public, work):
         d.mkdir(mode=0o700)
     source = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / '.ci-private-source'
@@ -69,7 +94,8 @@ def mode_run():
             continue
         ok = step(steps, name, argv, private / (name + '.log'), rust, timeout, env)
     summary = dict(schema='stackbite.rustcheck.public-summary.v1', runner_os=os.environ.get('RUNNER_OS'),
-                   source_commit=PIN['commit'], toolchain=toolchain, steps=steps, passed=ok, gate=None)
+                   source_commit=PIN['commit'], toolchain=toolchain, user_owned_files=owner, steps=steps, passed=ok,
+                   gate=None)
     receipt = gate_out / 'gate-receipt.json'
     if receipt.is_file():
         try:
