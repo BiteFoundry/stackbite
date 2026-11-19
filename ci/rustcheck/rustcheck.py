@@ -1,0 +1,165 @@
+"""Rust workspace gate for the pinned private StackBite source on a hosted runner.
+
+  pin    print the pinned source commit
+  run    install the pinned toolchain, fetch crates, run scripts/qa/gate at level G3
+  seal   encrypt the private logs for the recipient certificate
+
+Command output goes to RUNNER_TEMP/private-diagnostics only. Stdout and
+RUNNER_TEMP/public-summary carry step names, exit codes, durations and counts.
+"""
+import hashlib, json, os, pathlib, shutil, subprocess, sys, tarfile, time
+
+HERE = pathlib.Path(__file__).resolve().parent
+PIN = json.loads((HERE / 'pin.json').read_text(encoding='utf-8'))
+CERT = HERE / 'diagnostics-recipient.pem'
+CERT_SHA256 = '3dd53013ff2a4670174a2e7f7a863143db4aa99b6abf3601851d45e903e4827d'
+KEEP = 32 << 20   # bytes kept from the end of each private log
+
+
+def roots():
+    temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+    return temp / 'private-diagnostics', temp / 'public-summary', temp / 'rc'
+
+
+def step(steps, name, argv, log, cwd, timeout, env=None):
+    started = time.monotonic()
+    code = None
+    with open(log, 'wb') as out:
+        try:
+            code = subprocess.run(argv, cwd=cwd, stdout=out, stderr=subprocess.STDOUT, timeout=timeout, env=env).returncode
+            status = 'passed' if code == 0 else 'failed'
+        except subprocess.TimeoutExpired:
+            status = 'timeout'
+        except OSError:
+            status = 'not_started'
+    record = dict(name=name, status=status, exit_code=code, seconds=round(time.monotonic() - started, 1))
+    steps.append(record)
+    print('step', json.dumps(record), flush=True)
+    return status == 'passed'
+
+
+def mode_run():
+    private, public, work = roots()
+    for d in (private, public, work):
+        d.mkdir(mode=0o700)
+    source = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / '.ci-private-source'
+    rust = source / 'rust'
+    windows = os.name == 'nt'
+    toolchain = PIN['toolchain']
+    env = dict(os.environ, RUSTUP_TOOLCHAIN=toolchain, CARGO_TERM_COLOR='never', CARGO_TARGET_DIR=str(work / 'target'))
+    for name in ('GITHUB_TOKEN', 'GH_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN'):
+        env.pop(name, None)
+    gate_out = private / 'gate'
+    if windows:
+        gate = ['pwsh', '-NoProfile', '-File', str(source / 'scripts/qa/gate.ps1'), '-Level', 'G3',
+                '-AllowPlatformSkip', '-OutDir', str(gate_out)]
+    else:
+        gate = ['bash', str(source / 'scripts/qa/gate.sh'), '--level', 'G3', '--allow-platform-skip',
+                '--out-dir', str(gate_out)]
+    plan = [
+        ('toolchain', ['rustup', 'toolchain', 'install', toolchain, '--profile', 'minimal', '--no-self-update'], 900),
+        ('fetch', ['cargo', 'fetch', '--locked'], 900),
+        ('gate', gate, 6000),
+    ]
+    steps = []
+    ok = True
+    for name, argv, timeout in plan:
+        if not ok:
+            steps.append(dict(name=name, status='not_run', exit_code=None, seconds=0))
+            continue
+        ok = step(steps, name, argv, private / (name + '.log'), rust, timeout, env)
+    summary = dict(schema='stackbite.rustcheck.public-summary.v1', runner_os=os.environ.get('RUNNER_OS'),
+                   source_commit=PIN['commit'], toolchain=toolchain, steps=steps, passed=ok, gate=None)
+    receipt = gate_out / 'gate-receipt.json'
+    if receipt.is_file():
+        try:
+            doc = json.loads(receipt.read_text(encoding='utf-8-sig'))
+            flat = {}
+            def numbers(prefix, value):
+                if isinstance(value, bool) or value is None:
+                    flat[prefix] = value
+                elif isinstance(value, (int, float)):
+                    flat[prefix] = value
+                elif isinstance(value, dict):
+                    for key, item in value.items():
+                        if str(key).isidentifier():
+                            numbers(prefix + '.' + str(key) if prefix else str(key), item)
+                elif isinstance(value, list):
+                    flat[prefix + '.len'] = len(value)
+            numbers('', {k: v for k, v in doc.items() if k not in ('steps', 'commands')})
+            summary['gate'] = flat
+        except Exception:
+            summary['gate'] = 'receipt_unreadable'
+    (public / 'public-summary.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+    print('summary', json.dumps(summary), flush=True)
+    shutil.rmtree(work / 'target', ignore_errors=True)
+    return 0 if ok else 1
+
+
+def openssl():
+    for candidate in (r'C:\Program Files\Git\usr\bin\openssl.exe', shutil.which('openssl')):
+        if candidate and os.path.isfile(candidate):
+            version = subprocess.run([candidate, 'version'], capture_output=True, text=True).stdout
+            if version.startswith('OpenSSL 3.'):
+                return candidate
+    return None
+
+
+def mode_seal():
+    private, public, _ = roots()
+    public.mkdir(mode=0o700, exist_ok=True)
+    if not private.is_dir():
+        print('diagnostics=absent')
+        return 0
+    if hashlib.sha256(CERT.read_bytes()).hexdigest() != CERT_SHA256:
+        print('diagnostics=certificate_refused')
+        return 1
+    ssl = openssl()
+    if not ssl:
+        print('diagnostics=openssl_unavailable')
+        return 1
+    payload = private.parent / 'diagnostics-payload.tar'
+    count = 0
+    with tarfile.open(payload, 'w', format=tarfile.PAX_FORMAT) as tar:
+        for path in sorted(private.rglob('*')):
+            if path.is_symlink() or not path.is_file():
+                continue
+            size = path.stat().st_size
+            info = tarfile.TarInfo(('ci-out' / path.relative_to(private)).as_posix())
+            with open(path, 'rb') as handle:
+                if size > KEEP:
+                    handle.seek(size - KEEP)
+                    size = KEEP
+                info.size = size
+                tar.addfile(info, handle)
+            count += 1
+    if not count:
+        print('diagnostics=archive_empty')
+        return 1
+    cms = public / 'private-diagnostics.cms'
+    done = subprocess.run([ssl, 'cms', '-encrypt', '-binary', '-aes-256-gcm', '-outform', 'DER', '-in', str(payload),
+                           '-out', str(cms), '-recip', str(CERT), '-keyopt', 'rsa_padding_mode:oaep',
+                           '-keyopt', 'rsa_oaep_md:sha256'], capture_output=True)
+    payload.unlink()
+    if done.returncode != 0:
+        cms.unlink(missing_ok=True)
+        print('diagnostics=encryption_failed')
+        return 1
+    envelope = dict(format='openssl-cms-authenveloped-der', cipher='AES-256-GCM', recipient='RSA-3072-OAEP-SHA256',
+                    recipient_certificate_sha256=CERT_SHA256, ciphertext_sha256=hashlib.sha256(cms.read_bytes()).hexdigest(),
+                    ciphertext_bytes=cms.stat().st_size, members=count, plaintext_uploaded=False)
+    (public / 'diagnostics-envelope.json').write_text(json.dumps(envelope, indent=2) + '\n', encoding='utf-8')
+    print('diagnostics=encrypted')
+    return 0
+
+
+if __name__ == '__main__':
+    mode = sys.argv[1] if len(sys.argv) == 2 else ''
+    if mode == 'pin':
+        print(PIN['commit'])
+        sys.exit(0)
+    try:
+        sys.exit({'run': mode_run, 'seal': mode_seal}[mode]())
+    except Exception as error:   # the message may quote private paths or output
+        print('rustcheck=internal_error', type(error).__name__)
+        sys.exit(2)

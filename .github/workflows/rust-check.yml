@@ -1,0 +1,65 @@
+name: StackBite Rust check (private source)
+run-name: rustcheck-${{ github.ref_name }}
+# Runs the StackBite Rust workspace gate (scripts/qa/gate, level G3) on Windows and Linux for the PRIVATE
+# source commit pinned in ci/rustcheck/pin.json. The source is checked out read-only with the deploy key and
+# is never uploaded. Public logs and the public summary carry step names, exit codes, durations and counts
+# only; build and test output is CMS-encrypted for the recipient certificate and uploaded as ciphertext.
+on:
+  push:
+    branches:
+      - 'ci/rustcheck-**'
+permissions:
+  contents: read
+concurrency:
+  group: rustcheck-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+jobs:
+  gate:
+    if: github.repository == 'Shinick-Han/stackbite'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Read pinned private source commit
+        id: pin
+        shell: bash
+        run: |
+          c="$(python -I -B ci/rustcheck/rustcheck.py pin)"
+          [[ "$c" =~ ^[0-9a-f]{40}$ ]]
+          echo "commit=$c" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned private source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: shinick-dev/stackbite
+          ref: ${{ steps.pin.outputs.commit }}
+          path: .ci-private-source
+          fetch-depth: 1
+          ssh-key: ${{ secrets.STACKBITE_SOURCE_DEPLOY_KEY }}
+          ssh-strict: true
+          persist-credentials: false
+      - name: Rust workspace gate
+        run: python -I -B ci/rustcheck/rustcheck.py run
+      - name: Seal private diagnostics
+        if: always()
+        run: python -I -B ci/rustcheck/rustcheck.py seal
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: rustcheck-${{ matrix.os }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/public-summary
+          retention-days: 3
+          if-no-files-found: error
