@@ -26,6 +26,9 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'
     steps:
+      # Fixtures and golden texts are compared byte for byte; a Windows runner converts line ends by default.
+      - name: Keep checked-out bytes as committed
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
