@@ -81,6 +81,15 @@ def mode_run():
     else:
         gate = ['bash', str(source / 'scripts/qa/gate.sh'), '--level', 'G3', '--allow-platform-skip',
                 '--out-dir', str(gate_out)]
+    # Known failures live on a branch of the private repository, so test names never reach this one.
+    known = subprocess.run(['git', '-C', str(source), 'show',
+                            'origin/ci/rustcheck-baseline:' + ('windows.json' if windows else 'linux.json')],
+                           capture_output=True)
+    baseline = None
+    if known.returncode == 0:
+        baseline = work / 'baseline.json'
+        baseline.write_bytes(known.stdout)
+        gate += ['-Baseline' if windows else '--baseline', str(baseline)]
     plan = [
         ('toolchain', ['rustup', 'toolchain', 'install', toolchain, '--profile', 'minimal', '--no-self-update'], 900),
         ('fetch', ['cargo', 'fetch', '--locked'], 900),
@@ -94,7 +103,8 @@ def mode_run():
             continue
         ok = step(steps, name, argv, private / (name + '.log'), rust, timeout, env)
     summary = dict(schema='stackbite.rustcheck.public-summary.v1', runner_os=os.environ.get('RUNNER_OS'),
-                   source_commit=PIN['commit'], toolchain=toolchain, user_owned_files=owner, steps=steps, passed=ok,
+                   source_commit=PIN['commit'], toolchain=toolchain, user_owned_files=owner, baseline=baseline is not None,
+                   steps=steps, passed=ok,
                    gate=None)
     receipt = gate_out / 'gate-receipt.json'
     if receipt.is_file():
