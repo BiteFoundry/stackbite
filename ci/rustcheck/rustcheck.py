@@ -62,6 +62,18 @@ def user_owned_files():
     return bool(adv.SetTokenInformation(token, 4, ctypes.byref(owner), ctypes.sizeof(owner)))   # TokenOwner
 
 
+def flaky_candidates(receipt):
+    """Names of the gate's new failures when they are its only failure reason and few enough to rerun."""
+    try:
+        doc = json.loads(receipt.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return []
+    new = doc.get('new_failures') or []
+    if doc.get('failure_reasons') != ['new_failures'] or doc.get('new_targets_without_result') or not 1 <= len(new) <= 10:
+        return []
+    return sorted({test['name'] for test in new})
+
+
 def mode_run():
     private, public, work = roots()
     owner = user_owned_files() if os.name == 'nt' else None
@@ -102,9 +114,21 @@ def mode_run():
             steps.append(dict(name=name, status='not_run', exit_code=None, seconds=0))
             continue
         ok = step(steps, name, argv, private / (name + '.log'), rust, timeout, env)
+    # A test that fails once and passes alone right after is reported as retried, not as a pass of the gate step.
+    retried = 0
+    names = [] if ok or steps[-1]['name'] != 'gate' or steps[-1]['status'] != 'failed' else flaky_candidates(gate_out / 'gate-receipt.json')
+    if names:
+        wrapper = (['pwsh', '-NoProfile', '-File', str(source / 'scripts/qa/run_tests.ps1')] if windows
+                   else ['bash', str(source / 'scripts/qa/run_tests.sh')])
+        log = private / 'retry.log'
+        again = step(steps, 'retry', wrapper + ['--label', 'retry', '--', 'test', '--locked', '--offline', '--no-fail-fast',
+                                                '--workspace', '--', '--exact', *names], log, rust, 3000, env)
+        text = log.read_text(encoding='utf-8', errors='replace')
+        ok = again and all('test %s ... ok' % name in text for name in names)
+        retried = len(names)
     summary = dict(schema='stackbite.rustcheck.public-summary.v1', runner_os=os.environ.get('RUNNER_OS'),
                    source_commit=PIN['commit'], toolchain=toolchain, user_owned_files=owner, baseline=baseline is not None,
-                   steps=steps, passed=ok,
+                   retried_new_failures=retried, steps=steps, passed=ok,
                    gate=None)
     receipt = gate_out / 'gate-receipt.json'
     if receipt.is_file():
