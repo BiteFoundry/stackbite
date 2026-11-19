@@ -47,7 +47,8 @@ jobs:
           repository: shinick-dev/stackbite
           ref: ${{ steps.pin.outputs.commit }}
           path: .ci-private-source
-          fetch-depth: 1
+          # The Python-oracle tests read their fixture source from older commits.
+          fetch-depth: 0
           ssh-key: ${{ secrets.STACKBITE_SOURCE_DEPLOY_KEY }}
           ssh-strict: true
           persist-credentials: false
