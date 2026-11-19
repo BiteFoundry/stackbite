@@ -1,26 +1,26 @@
 {
   "schema": 1,
-  "version": "0.7.0",
-  "commit": "6c76b330f62e5dcc9a4743e05412bca42938f13a",
+  "version": "0.7.1",
+  "commit": "85cfd25ef5aaa5267742886b9442fdae5686e507",
   "repository": "Shinick-Han/stackbite",
   "platforms": {
     "win32-x64": {
-      "asset": "stackbite-0.7.0-windows-x64-6c76b330f62e.zip",
-      "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.7.0/stackbite-0.7.0-windows-x64-6c76b330f62e.zip",
-      "sha256": "9d670bbbbfd7a35fa4b2de1a28c6d8adfb6b5f11ad38820d614d913855eafdb8",
-      "size": 31588287,
-      "root": "stackbite-0.7.0-windows-x64-6c76b330f62e",
-      "manifestSha256": "83508474d91b41c14146544dd01530be814c5739cf092f2c1f900632bd0b8d9b",
-      "metadataSha256": "ea2d4be2a15b8d5a57941811112e8ebdad83ba759f51355cee741a3dc234397e"
+      "asset": "stackbite-0.7.1-windows-x64-85cfd25ef5aa.zip",
+      "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.7.1/stackbite-0.7.1-windows-x64-85cfd25ef5aa.zip",
+      "sha256": "a1226806c5036513aa925dde854c14c6903f879667a82574348b8e711f7eb558",
+      "size": 31595487,
+      "root": "stackbite-0.7.1-windows-x64-85cfd25ef5aa",
+      "manifestSha256": "911bb65d9472cd5e90049e7531e8a7bf283dddaa8dcc15b16e5c602a661c8fc0",
+      "metadataSha256": "32182c0c40085805cd0b119809f298348d12d5949e6689a93a8e971d719b719a"
     },
     "linux-x64": {
-      "asset": "stackbite-0.7.0-linux-x86_64-6c76b330f62e.tar.gz",
-      "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.7.0/stackbite-0.7.0-linux-x86_64-6c76b330f62e.tar.gz",
-      "sha256": "b4baca5c677507b910d12d56657cb4c23bbb7648af7426739ffe5e6d45242ce7",
-      "size": 36251137,
-      "root": "stackbite-0.7.0-linux-x86_64-6c76b330f62e",
-      "manifestSha256": "b91a3f8d0e58cfc1152fcb1aad7537aad0fc786e9609cbc7f4cd050c3ba558fb",
-      "metadataSha256": "afdb2b552539da1c20065b3a1a4a7659a64d0dc2006946669076dd9fdbf0227d"
+      "asset": "stackbite-0.7.1-linux-x86_64-85cfd25ef5aa.tar.gz",
+      "url": "https://github.com/Shinick-Han/stackbite/releases/download/v0.7.1/stackbite-0.7.1-linux-x86_64-85cfd25ef5aa.tar.gz",
+      "sha256": "6ed063cda00f3e558227cb53c62898271f8823ddb1e5f3ca50310ab389b027bb",
+      "size": 36087926,
+      "root": "stackbite-0.7.1-linux-x86_64-85cfd25ef5aa",
+      "manifestSha256": "f593e334b478dea870990948374c54b9c2fabc0bee7aaa3887c86e6b437fb0d8",
+      "metadataSha256": "1dcc5cbd36ad9b2557bc3a584d165c9b7ef7465f21cc189e6da754f23a6f81f1"
     }
   }
 }

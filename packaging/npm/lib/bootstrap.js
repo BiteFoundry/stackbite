@@ -610,7 +610,8 @@ async function formerSelection(saved, environment, spec) {
 }
 async function publishCache(payload, target, spec, options) {
   // The staging check and the reuse decision below judge the same locator bytes.
-  const locator = onceLocator(installationRoot(options.environment, spec.platform));
+  const root = installationRoot(options.environment, spec.platform);
+  const locator = onceLocator(root);
   await assertBaseline(options.environment, spec.platform, locator);
   let migrate = false;
   const saved = options.existing ? await locator() : undefined;
@@ -620,7 +621,12 @@ async function publishCache(payload, target, spec, options) {
       || !!await formerSelection(saved, options.environment, spec);
     if (!migrate && typeof saved.home === 'string' && path.isAbsolute(saved.home)
         && typeof saved.state === 'string' && path.isAbsolute(saved.state) && /^[a-f0-9]{32}$/.test(saved.installation_id)
-        && (!descriptor || JSON.stringify(saved.npm_registration) === JSON.stringify(JSON.parse(descriptor)))) return;
+        && (!descriptor || JSON.stringify(saved.npm_registration) === JSON.stringify(JSON.parse(descriptor)))) {
+      if (await profileNeedsRepair(saved, payload, spec, options.environment, root)) {
+        await repairLaunchers(payload, spec, options);
+      }
+      return;
+    }
   }
   const engine = path.join(payload, 'stackbite' + (spec.platform === 'win32' ? '.exe' : ''));
   // A selection still in the previous cache layout moves to the durable image.
@@ -628,6 +634,17 @@ async function publishCache(payload, target, spec, options) {
     : ['--record-install', target, '-', payload, 'cache'];
   const result = await launchNative(engine, argv, { ...options.environment, STACKBITE_HOME: payload }, options);
   if (result.code !== 0 || result.signal) fail('Runtime publication was refused');
+}
+
+// The engine repeats ownership, version, selection and state checks under
+// the publication gate. The preflight keeps an ordinary warm start spawn-free.
+async function repairLaunchers(home, spec, options) {
+  const engine = path.join(home, 'stackbite' + (spec.platform === 'win32' ? '.exe' : ''));
+  try {
+    const result = await launchNative(engine, ['--record-install', home, '-', 'reconcile'],
+      { ...options.environment, STACKBITE_HOME: home }, options);
+    return result.code === 0 && !result.signal;
+  } catch { return false; }
 }
 
 function runtimeDirectory(environment, platform) {
@@ -717,7 +734,10 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
   // The first failure of the work below is the outcome; cleanup failures are reported as debt.
   const primary = { failed: false, error: undefined };
   const reportDebt = options.cleanupReport || debtReporter(options.stderr || process.stderr);
-  const settled = installed => commandResolution(installed, spec, environment, options);
+  const settled = (installed, repair = false) => commandResolution(installed, spec, environment, {
+    ...options, showExecutable: !checkOnly,
+    repair: repair ? () => repairLaunchers(installed.home, spec, { ...options, environment }) : undefined,
+  });
   try {
     if (registrationSource) await registrationSource.validate();
     if (!checkOnly) await assertBaseline(environment, spec.platform);
@@ -739,7 +759,7 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
       // A selected image outside app/ is its own maintenance engine.
       if (!checkOnly) await publishImpl(home, target, spec, { ...options, environment, cache, existing: true });
       if (checkOnly || reportCached) progress('ready');
-      return reportCached ? settled(installed) : installed;
+      return reportCached ? settled(installed, !checkOnly) : installed;
     }
     if (checkOnly) throw notCached();
     // A verified previous-layout image is copied once into the durable target;
@@ -792,7 +812,8 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
 // resolves when it is not this package's version. Advisory only; it never throws.
 async function commandResolution(installed, spec, environment, options) {
   await (options.commandCheck || reportCommandResolution)({ spec, installed, environment,
-    packageRoot: options.packageRoot, spawnImpl: options.spawnImpl, stderr: options.stderr });
+    packageRoot: options.packageRoot, spawnImpl: options.spawnImpl, stderr: options.stderr,
+    repair: options.repair, showExecutable: options.showExecutable });
   return installed;
 }
 function notCached() {
@@ -817,7 +838,7 @@ async function stageRelease(spec, staging, { downloadImpl, extractImpl, progress
 }
 // Stage ownership (this invocation's mkdtemp identity) and cleanup settlement.
 const { createStage, removeStage, settleCleanup, debtReporter } = require('./stage-cleanup');
-const { reportCommandResolution } = require('./command-resolution');
+const { profileNeedsRepair, reportCommandResolution } = require('./command-resolution');
 // The fixed engine may hand removal to a helper started from its own image
 // (parent_resume.runtime). While the same journal still names that image, the
 // stage is the helper's runtime and stays; finalization removes the journal.

@@ -1,9 +1,8 @@
 'use strict';
 // Which stackbite command will the user's shell run after this npm package is
 // installed? PATH order decides, and an older launcher earlier on PATH keeps
-// running its own version. This module only reads: it names the command PATH
-// picks, the version it runs and the next action. It never writes, replaces or
-// runs the command it finds. Ownership of a launcher is established only by the
+// running its own version. This module reads the command PATH picks and can
+// ask the verified engine to repair it. Ownership is established only by the
 // installer grammar AND the verified pinned engine's own --managed-launcher
 // answer; the engine remains the only writer of launchers. Since U01 the
 // engine's npm publication (--record-install TARGET - SOURCE cache) itself
@@ -192,6 +191,26 @@ function newer(a, b) {
   for (let index = 0; index < 3; index++) if (left[index] !== right[index]) return left[index] > right[index];
   return false;
 }
+
+async function profileNeedsRepair(saved, target, spec, environment, root) {
+  const windows = spec.platform === 'win32';
+  if (variable(environment, 'STACKBITE_NPM_KEEP_LAUNCHERS', windows)) return false;
+  if (['version', 'commit', 'updated_at'].some(key => Object.hasOwn(saved, key))) return true;
+  const app = path.join(root, 'app');
+  const oldApp = path.join(path.dirname(root), windows ? 'Helm' : 'helm', 'app');
+  const managedImage = async home => await sameDirectory(path.dirname(home), app, windows)
+    || await sameDirectory(path.dirname(home), oldApp, windows);
+  if (folded(saved.home, windows) !== folded(target, windows)
+      && await managedImage(saved.home)
+      && newer(spec.version, (await jsonFile(path.join(saved.home, 'portable.json')))?.version)) return true;
+  const profile = variable(environment, windows ? 'USERPROFILE' : 'HOME', windows) || require('node:os').homedir();
+  const directory = path.join(profile, '.local', 'bin');
+  for (const name of windows ? ['stackbite-portable.cmd', 'stackbite.cmd'] : ['stackbite']) {
+    const launcher = await describeCommand({ directory, file: path.join(directory, name) }, spec.platform);
+    if (launcher.kind === 'launcher' && newer(spec.version, launcher.version) && await managedImage(launcher.home)) return true;
+  }
+  return false;
+}
 // A path that can be pasted inside the quotes of the suggested command.
 const quotable = (value, windows) => (windows ? !/["%\0\r\n]/.test(value) : !/[\0\r\n]/.test(value));
 const quoted = (value, windows) => (windows ? '"' + value + '"' : "'" + value.replaceAll("'", "'\\''") + "'");
@@ -262,13 +281,28 @@ function describeFinding(finding) {
   return lines.map(line => 'Stackbite: ' + line + '\n').join('');
 }
 
-// Advisory: a failed inspection says nothing and never fails the install.
+// A failed inspection or repair never prevents the pinned package from running.
 async function reportCommandResolution(options) {
   try {
-    const finding = await inspectCommandResolution(options);
-    if (finding) (options.stderr || process.stderr).write(describeFinding(finding));
+    let finding = await inspectCommandResolution(options);
+    const windows = (options.platform || options.spec.platform) === 'win32';
+    if (options.repair && finding?.winner.managed
+        && newer(options.spec.version, finding.winner.version)
+        && !variable(options.environment || process.env, 'STACKBITE_NPM_KEEP_LAUNCHERS', windows)) {
+      if (await options.repair()) finding = await inspectCommandResolution(options);
+    }
+    if (finding) {
+      const stderr = options.stderr || process.stderr;
+      stderr.write(describeFinding(finding));
+      const executable = options.installed?.executable;
+      if (options.showExecutable && executable && quotable(executable, windows)) {
+        const command = windows ? "PowerShell: & '" + executable.replaceAll("'", "''")
+          + "'\nStackbite: Command Prompt: " + quoted(executable, true) : quoted(executable, false);
+        stderr.write('Stackbite: To run this version now: ' + command + '\n');
+      }
+    }
     return finding;
   } catch { return null; }
 }
 
-module.exports = { reportCommandResolution, inspectCommandResolution, describeFinding, managedLauncher, pathCommands };
+module.exports = { profileNeedsRepair, reportCommandResolution, inspectCommandResolution, describeFinding, managedLauncher, pathCommands };

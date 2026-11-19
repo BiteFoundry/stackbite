@@ -1,8 +1,8 @@
 # StackBite through npm and npx
 
-StackBite 0.7.0 supplies Windows x64 and Linux x64 with glibc 2.28 or newer.
-macOS 0.7.0 bundles follow in a later release; on a Mac (macOS 13 or newer, Apple
-Silicon or Intel) install `stackbite@0.6.0` until then, because the 0.7.0
+StackBite 0.7.1 supplies Windows x64 and Linux x64 with glibc 2.28 or newer.
+macOS 0.7.1 bundles follow in a later release; on a Mac (macOS 13 or newer, Apple
+Silicon or Intel) install `stackbite@0.6.0` until then, because the 0.7.1
 launcher has no macOS runtime pin and stops with `Invalid pinned release asset`.
 Node.js 20 or newer is required;
 the current [Node.js LTS](https://nodejs.org/en/download) is recommended. Linux
@@ -85,7 +85,7 @@ repair commands.
 
 ## Mac architecture
 
-StackBite 0.7.0 has no macOS bundles; this section applies to `stackbite@0.6.0`
+StackBite 0.7.1 has no macOS bundles; this section applies to `stackbite@0.6.0`
 and to the later release that adds them. The launcher uses Node.js `process.arch`: `arm64` selects the Apple Silicon
 runtime and `x64` the Intel runtime. Use a native Node.js installation for your
 Mac architecture; an x64 Node.js process under Rosetta selects the Intel runtime,
