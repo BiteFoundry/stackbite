@@ -10,12 +10,12 @@ on:
       - 'ci/rustcheck-**'
 permissions:
   contents: read
-concurrency:
-  group: rustcheck-${{ github.ref }}-${{ matrix.os }}
-  cancel-in-progress: true
 jobs:
   gate:
     if: github.repository == 'Shinick-Han/stackbite'
+    concurrency:
+      group: rustcheck-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
