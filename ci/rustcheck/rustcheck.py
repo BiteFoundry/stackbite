@@ -135,7 +135,8 @@ def mode_run():
         again = step(steps, 'retry', wrapper + ['--label', 'retry', '--', 'test', '--locked', '--offline', '--no-fail-fast',
                                                 '--workspace', '--', '--exact', *names], log, rust, 3000, env)
         text = log.read_text(encoding='utf-8', errors='replace')
-        ok = again and all('test %s ... ok' % name in text for name in names)
+        # The verdict is each retried test's own line: with --workspace the cargo exit also carries targets that fail for other, known reasons.
+        ok = all('test %s ... ok' % name in text and 'test %s ... FAILED' % name not in text for name in names)
         retried = len(names)
     platform_check = None
     if windows and not ok and not names and steps[-1]['name'] == 'gate' and only_platform_check_failed(gate_out / 'gate-receipt.json'):
