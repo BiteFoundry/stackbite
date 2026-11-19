@@ -111,9 +111,13 @@ def mode_seal():
     if not private.is_dir():
         print('diagnostics=absent')
         return 0
-    if hashlib.sha256(CERT.read_bytes()).hexdigest() != CERT_SHA256:
+    # A Windows checkout may hand the certificate over with CRLF line ends.
+    pem = CERT.read_bytes().replace(b'\r\n', b'\n')
+    if hashlib.sha256(pem).hexdigest() != CERT_SHA256:
         print('diagnostics=certificate_refused')
         return 1
+    cert = private.parent / 'diagnostics-recipient.pem'
+    cert.write_bytes(pem)
     ssl = openssl()
     if not ssl:
         print('diagnostics=openssl_unavailable')
@@ -138,7 +142,7 @@ def mode_seal():
         return 1
     cms = public / 'private-diagnostics.cms'
     done = subprocess.run([ssl, 'cms', '-encrypt', '-binary', '-aes-256-gcm', '-outform', 'DER', '-in', str(payload),
-                           '-out', str(cms), '-recip', str(CERT), '-keyopt', 'rsa_padding_mode:oaep',
+                           '-out', str(cms), '-recip', str(cert), '-keyopt', 'rsa_padding_mode:oaep',
                            '-keyopt', 'rsa_oaep_md:sha256'], capture_output=True)
     payload.unlink()
     if done.returncode != 0:
