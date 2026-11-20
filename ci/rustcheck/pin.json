@@ -1,6 +1,6 @@
 {
   "schema": "stackbite.rustcheck.pin.v1",
   "repository": "shinick-dev/stackbite",
-  "commit": "85cfd25ef5aaa5267742886b9442fdae5686e507",
+  "commit": "8fe6d5bb0878c81381db89de5562c78a62405931",
   "toolchain": "1.99.1"
 }
