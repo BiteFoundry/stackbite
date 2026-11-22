@@ -16,7 +16,7 @@ stackbite setup
 stackbite
 ```
 
-Mac에서는 당분간 `stackbite@0.6.0`을 설치합니다. 0.7.2 macOS 배포본은 이후 release로
+Mac에서는 당분간 `stackbite@0.6.0`을 설치합니다. 0.7.3 macOS 배포본은 이후 release로
 제공합니다(아래 표 참고).
 
 `setup`은 고정된 네이티브 runtime을 내려받아 검사하며 앱은 열지 않습니다.
@@ -28,7 +28,7 @@ Codex·Claude 같은 provider CLI는 별도로 설치하고 로그인합니다.
 압축 파일을 받아 **전체를 해제**한 뒤 `stackbite.exe`(Windows) 또는 `./stackbite`
 (Linux·macOS)로 실행할 수도 있습니다. 이 경로는 Node.js와 Python이 모두 필요 없습니다.
 
-현재 버전: **0.7.2**
+현재 버전: **0.7.3**
 
 | Platform | Runtime |
 | --- | --- |
@@ -36,12 +36,12 @@ Codex·Claude 같은 provider CLI는 별도로 설치하고 로그인합니다.
 | Linux | x86_64, GLIBC 2.28 이상 |
 | macOS | 아직 없음, 0.6.0 사용(Apple Silicon·Intel, macOS 13 이상) |
 
-두 배포본은 runtime source `fbf83cee2503`로 빌드합니다. Linux ARM·Alpine/musl
+두 배포본은 runtime source `173f06baf77b`로 빌드합니다. Linux ARM·Alpine/musl
 배포본은 제공하지 않습니다. 배포 파일, 실제 검사 범위와 아직 검증하지 않은 항목은
-[0.7.2 release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.7.2)에 있습니다.
+[0.7.3 release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.7.3)에 있습니다.
 
-**macOS:** 0.7.2에는 아직 macOS 배포본이 없으며 이후 release로 제공합니다. Mac에서는
-`npm install --global stackbite@0.6.0`을 실행하거나(0.7.2 npm launcher는 Mac에서
+**macOS:** 0.7.3에는 아직 macOS 배포본이 없으며 이후 release로 제공합니다. Mac에서는
+`npm install --global stackbite@0.6.0`을 실행하거나(0.7.3 npm launcher는 Mac에서
 `Invalid pinned release asset`으로 멈춥니다) [0.6.0 release](https://github.com/Shinick-Han/stackbite/releases/tag/v0.6.0)에서 macOS 배포본을
 받습니다. Mac의 0.6.0 설치는 그때까지 0.6.0에 머뭅니다.
 
