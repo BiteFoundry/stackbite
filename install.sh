@@ -1,6 +1,6 @@
 #!/bin/sh
-# StackBite 0.7.3, source commit 173f06baf77b127da72c62f814b72223d6395fdb.
-# macOS installs StackBite 0.6.0 (source commit 060019651abe60485a0cc39e72d99e8756e4aea2) until 0.7.3 has macOS bundles.
+# StackBite 0.7.4, source commit 3e5cf64e5c160e6b1c8977eec958a973cce1029f.
+# macOS installs StackBite 0.6.0 (source commit 060019651abe60485a0cc39e72d99e8756e4aea2) until 0.7.4 has macOS bundles.
 set -eu
 run=yes
 case "${1:-}" in
@@ -12,7 +12,7 @@ esac
 case "$(uname -s):$(uname -m)" in
     Darwin:arm64) version='0.6.0'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.6.0/stackbite-0.6.0-macos-arm64-060019651abe.tar.gz'; expected='4aafd7acb577c91fd3b16c15d27dced9226a2c72462682e0cbe61f2c3e54d639'; root='stackbite-0.6.0-macos-arm64-060019651abe'; hash=shasum ;;
     Darwin:x86_64) version='0.6.0'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.6.0/stackbite-0.6.0-macos-x86_64-060019651abe.tar.gz'; expected='bb3ea60fc214a659c93370250693d252aade1e39ef285808847b14b8cde04570'; root='stackbite-0.6.0-macos-x86_64-060019651abe'; hash=shasum ;;
-    Linux:x86_64) version='0.7.3'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.7.3/stackbite-0.7.3-linux-x86_64-173f06baf77b.tar.gz'; expected='f6c34783c575f94119d26d0ea9323b587a6afd88e53281cea0a18e89004052cb'; root='stackbite-0.7.3-linux-x86_64-173f06baf77b'; hash=sha256sum ;;
+    Linux:x86_64) version='0.7.4'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.7.4/stackbite-0.7.4-linux-x86_64-3e5cf64e5c16.tar.gz'; expected='ade3afde1dbd6c1b242fa84cd61c7c4123e6dab26f2b4462ec9a772146f1bcc7'; root='stackbite-0.7.4-linux-x86_64-3e5cf64e5c16'; hash=sha256sum ;;
     *) echo 'StackBite supports macOS arm64/x86_64 and Linux x86_64.' >&2; exit 1 ;;
 esac
 [ -n "$url" ] || { echo 'This installer has no reviewed release pin for this architecture.' >&2; exit 1; }
