@@ -4,7 +4,7 @@ A terminal workspace for shells and AI coding agents, organized into Rooms and
 Seats. The app is a Rust-native launcher, Room service, terminal owner and TUI;
 no Python is needed to run it.
 
-Current release: **0.7.5** · [Release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.7.5) · [All releases](https://github.com/Shinick-Han/stackbite/releases) · [Issues](https://github.com/Shinick-Han/stackbite/issues)
+Current release: **0.7.6** · [Release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.7.6) · [All releases](https://github.com/Shinick-Han/stackbite/releases) · [Issues](https://github.com/Shinick-Han/stackbite/issues)
 
 ## Install
 
@@ -17,7 +17,7 @@ stackbite setup
 stackbite
 ```
 
-On a Mac, install `stackbite@0.6.0` instead for now: the 0.7.5 macOS bundles
+On a Mac, install `stackbite@0.6.0` instead for now: the 0.7.6 macOS bundles
 follow in a later release (see the platform table below).
 
 The npm package is a small launcher. `setup` downloads and verifies its pinned
@@ -30,7 +30,7 @@ Without Node.js, download a native bundle from the
 extract the **entire** archive and run `stackbite.exe` (Windows) or `./stackbite`
 (Linux, macOS).
 
-| Platform | 0.7.5 bundle |
+| Platform | 0.7.6 bundle |
 | --- | --- |
 | Windows | x64 |
 | Linux | x86_64, GLIBC 2.28+ |
@@ -39,8 +39,8 @@ extract the **entire** archive and run `stackbite.exe` (Windows) or `./stackbite
 Linux ARM and musl/Alpine bundles are not provided. npm details:
 [packaging/npm/README.md](https://github.com/Shinick-Han/stackbite/blob/main/packaging/npm/README.md).
 
-**macOS:** 0.7.5 has no macOS bundles yet; they follow in a later release. On a
-Mac, run `npm install --global stackbite@0.6.0` (the 0.7.5 npm launcher stops
+**macOS:** 0.7.6 has no macOS bundles yet; they follow in a later release. On a
+Mac, run `npm install --global stackbite@0.6.0` (the 0.7.6 npm launcher stops
 with `Invalid pinned release asset` there), or download a macOS bundle from the
 [0.6.0 release](https://github.com/Shinick-Han/stackbite/releases/tag/v0.6.0).
 A Mac 0.6.0 installation stays on 0.6.0 until then.
