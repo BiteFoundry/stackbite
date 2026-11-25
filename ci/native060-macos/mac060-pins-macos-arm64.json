@@ -1,6 +1,6 @@
 {
   "schema": "stackbite.native060.macos-r5full-pins.v1",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "baseline_version": "0.6.0",
   "platform": "macos-arm64",
   "target": "aarch64-apple-darwin",
@@ -11,10 +11,10 @@
     "repository": "shinick-dev/stackbite",
     "visibility": "private",
     "checkout_path": ".ci-private-source",
-    "commit": "6c76b330f62e5dcc9a4743e05412bca42938f13a",
-    "tree": "10602e78a8f4c518e406f50cae04538dbfe025b7"
+    "commit": "b72404a5002bc1c2359969594966d195fcd73d25",
+    "tree": "84ca2e771b9575f44e8b603199c1b4f676de1ed4"
   },
-  "source_package_version": "0.6.0",
+  "source_package_version": "0.7.6",
   "toolchain": "1.98.1",
   "msrv": "1.85.1",
   "deployment_target": "13.0",
@@ -50,7 +50,7 @@
   "source_files": {
     "ci/native120/intel120.py": "8d5abed5339a016c78f1a8c04e3d5642de14681f66b06485f5a7689fa7032c24",
     "ci/native120/native-runtime-qa.py": "ea37e0df9d598a1542f7dba78841b00db0a788d42d98c3fa6f3c95f6be45785b",
-    "scripts/qa/lifecycle_regression.py": "c19c2a47c5fa336224873e88707259907f611b333042e8ef391959bbf601b169",
+    "scripts/qa/lifecycle_regression.py": "225d1ee06c4c44b4725ab18a6fd02a5eaa781f417ca8049a2e2c8991e9d9a8d9",
     "requirements-build.txt": "8b5c18678b29b5e8e0fb586a35ac1dce3ccd9da321e8f12ace0e118350b4e568",
     "ci/native120/requirements-intel-build.txt": "5fba6133b446d9ffa5aaa295b573e0e902b3b187f80f17650f2c2ac71a3b44a0",
     "rust/PROJECT-NOTICE.txt": "c25b1eb4405c197ba335a171c572f926fa991d2db73a9be3f010c253180d4188",
@@ -83,7 +83,7 @@
   },
   "runtime_capsule_catalog": {
     "path": "runtime-capsules.json",
-    "sha256": "05f49bde5bfcd8175a5515d0a1002cb51cb59916f6d7acb18ee16d4d3d223a0d",
+    "sha256": "2b7c1421a60aafc06e4924202463c0b4ddc4393e8905a9e9200c281f10f8a966",
     "size": 507
   },
   "placed_wire": {

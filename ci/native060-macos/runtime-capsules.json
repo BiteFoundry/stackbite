@@ -1,15 +1,15 @@
 {
  "capsules": [
   {
-   "archive_sha256": "e539dc2d5077d8791435a9ae8cdc9152e6d56db1d17f36edfdd79a9809969b69",
-   "archive_size": 31241365,
-   "asset": "stackbite-runtime-capsule-0.7.0-linux-x86_64-6c76b330f62e.tar.gz",
-   "expanded_bytes": 101911365,
-   "manifest_sha256": "b4afd639f6f03e1fa85f7185f4c7b7184efc8efeedf1332d773f1111f0f65580",
+   "archive_sha256": "babcf41ed74b6cfb830bda11a37bd9ee9699b09ccce63178abfb3c6e69482ba4",
+   "archive_size": 31627771,
+   "asset": "stackbite-runtime-capsule-0.8.0-linux-x86_64-b72404a5002b.tar.gz",
+   "expanded_bytes": 102317017,
+   "manifest_sha256": "b62d60125e6aee88911646583eb850b63c0cceed7b8bb5b8c6fe528b4abfd5c7",
    "platform": "linux-x86_64"
   }
  ],
- "commit": "6c76b330f62e5dcc9a4743e05412bca42938f13a",
+ "commit": "b72404a5002bc1c2359969594966d195fcd73d25",
  "schema": "stackbite.runtime-capsule-catalog.v1",
- "version": "0.7.0"
+ "version": "0.8.0"
 }

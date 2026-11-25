@@ -283,6 +283,28 @@ macos_process_preflight() {
   grep -F 'darwin_table_keeps_this_process_and_its_root_owned_ancestors: test' "$W/macos-process-host.list" > /dev/null
   "${T[@]}" -- --test-threads=1 | tee "$W/macos-process-host.out"
   helper count --label macos-process-host --list "$W/macos-process-host.list" --run "$W/macos-process-host.out" --out "$OUT/macos-process-host.json"
+  # R080 (MAC-B1 repair): the product decodes kern.proc records by fixed LP64 offsets because the Rust libc crate has
+  # no Apple kinfo_proc. Compile-time proof against THIS runner's SDK header with the job's clang, in this same step;
+  # output stays in the sealed preflight-1.log. Any difference fails the step before the release build.
+  cat > "$W/kinfo-layout.c" <<'CKINFO'
+#include <stddef.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/sysctl.h>
+_Static_assert(sizeof(struct kinfo_proc) == 648, "struct kinfo_proc is not 648 bytes");
+_Static_assert(offsetof(struct kinfo_proc, kp_proc.p_pid) == 40, "p_pid is not at 40");
+_Static_assert(offsetof(struct kinfo_proc, kp_eproc.e_ucred.cr_uid) == 420, "effective uid is not at 420");
+_Static_assert(offsetof(struct kinfo_proc, kp_eproc.e_pgid) == 564, "process group is not at 564");
+_Static_assert(offsetof(struct kinfo_proc, kp_eproc.e_tdev) == 572, "tty device is not at 572");
+int main(void) {
+  printf("sdk kinfo_proc layout: size=%zu p_pid=%zu cr_uid=%zu e_pgid=%zu e_tdev=%zu\n", sizeof(struct kinfo_proc),
+         offsetof(struct kinfo_proc, kp_proc.p_pid), offsetof(struct kinfo_proc, kp_eproc.e_ucred.cr_uid),
+         offsetof(struct kinfo_proc, kp_eproc.e_pgid), offsetof(struct kinfo_proc, kp_eproc.e_tdev));
+  return 0;
+}
+CKINFO
+  "$CLANG" -isysroot "$SDK" -std=c11 -o "$W/kinfo-layout" "$W/kinfo-layout.c"
+  "$W/kinfo-layout" | grep -Fx 'sdk kinfo_proc layout: size=648 p_pid=40 cr_uid=420 e_pgid=564 e_tdev=572'
   "$BASE_PY" -I -B - "$OUT/macos-process-api.json" <<'PYHOST'
 import ctypes as c, errno, json, os, pathlib, struct, sys
 assert os.geteuid() != 0, 'unprivileged native proof required'

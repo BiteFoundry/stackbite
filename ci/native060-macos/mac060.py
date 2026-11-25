@@ -94,11 +94,11 @@ HERE = pathlib.Path(__file__).resolve().parent
 PRIVATE_CHECKOUT = '.ci-private-source'
 PLATFORM_ENV = 'SB060_PLATFORM'
 PUBLIC_SCHEMA = 'stackbite.native060.macos-r5full-public-summary.v1'
-ARCHIVE_NAME = re.compile(r'stackbite-0\.7\.0-macos-(arm64|x86_64)-[0-9a-f]{12}\.tar\.gz').fullmatch
+ARCHIVE_NAME = re.compile(r'stackbite-0\.8\.0-macos-(arm64|x86_64)-[0-9a-f]{12}\.tar\.gz').fullmatch
 SCHEMA = 'stackbite.native060.macos-r5full-pins.v1'
 RESULT_SCHEMA = 'stackbite.native060.macos-r5full-result.v1'
 HARNESS = 'ci/native060-macos'
-VERSION, BASELINE = '0.7.0', '0.6.0'
+VERSION, BASELINE = '0.8.0', '0.6.0'
 
 # RREL04 (0.6.0): the L0 Linux runtime-capsule catalog every final controller pins. Root binds its exact bytes
 # (CATALOG in this harness directory, data only) and their sha256/size into both lane pins (bind_mac.py).
