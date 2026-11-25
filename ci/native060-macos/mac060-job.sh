@@ -275,16 +275,8 @@ preflight() {
 }
 step preflight-0 preflight 0
 macos_process_preflight() {
-  preflight 1
-  # Source-reviewed R3 native host regression, discovered and executed on this unprivileged Mac.
-  local T=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
-    --manifest-path rust/Cargo.toml --locked -p stackbite-launcher --lib native_lifecycle::host::tests)
-  "${T[@]}" -- --list --format terse > "$W/macos-process-host.list"
-  grep -F 'darwin_table_keeps_this_process_and_its_root_owned_ancestors: test' "$W/macos-process-host.list" > /dev/null
-  "${T[@]}" -- --test-threads=1 | tee "$W/macos-process-host.out"
-  helper count --label macos-process-host --list "$W/macos-process-host.list" --run "$W/macos-process-host.out" --out "$OUT/macos-process-host.json"
   # R080 (MAC-B1 repair): the product decodes kern.proc records by fixed LP64 offsets because the Rust libc crate has
-  # no Apple kinfo_proc. Compile-time proof against THIS runner's SDK header with the job's clang, in this same step;
+  # no Apple kinfo_proc. Compile-time proof against THIS runner's SDK header with the job's clang, first in this step, before any cargo call;
   # output stays in the sealed preflight-1.log. Any difference fails the step before the release build.
   cat > "$W/kinfo-layout.c" <<'CKINFO'
 #include <stddef.h>
@@ -303,8 +295,16 @@ int main(void) {
   return 0;
 }
 CKINFO
-  "$CLANG" -isysroot "$SDK" -std=c11 -o "$W/kinfo-layout" "$W/kinfo-layout.c"
+  "$CLANG" -isysroot "$SDK" -o "$W/kinfo-layout" "$W/kinfo-layout.c"
   "$W/kinfo-layout" | grep -Fx 'sdk kinfo_proc layout: size=648 p_pid=40 cr_uid=420 e_pgid=564 e_tdev=572'
+  preflight 1
+  # Source-reviewed R3 native host regression, discovered and executed on this unprivileged Mac.
+  local T=(env RUSTC="$C/rustc" CARGO_TARGET_DIR="$W/preflight-target" "$C/cargo" test
+    --manifest-path rust/Cargo.toml --locked -p stackbite-launcher --lib native_lifecycle::host::tests)
+  "${T[@]}" -- --list --format terse > "$W/macos-process-host.list"
+  grep -F 'darwin_table_keeps_this_process_and_its_root_owned_ancestors: test' "$W/macos-process-host.list" > /dev/null
+  "${T[@]}" -- --test-threads=1 | tee "$W/macos-process-host.out"
+  helper count --label macos-process-host --list "$W/macos-process-host.list" --run "$W/macos-process-host.out" --out "$OUT/macos-process-host.json"
   "$BASE_PY" -I -B - "$OUT/macos-process-api.json" <<'PYHOST'
 import ctypes as c, errno, json, os, pathlib, struct, sys
 assert os.geteuid() != 0, 'unprivileged native proof required'
