@@ -246,11 +246,36 @@ function selectedRoot(directory, environment, platform) {
   const roots = [data, home, path.join(home, '.local', 'bin')].map(root => path.resolve(root)).sort((a, b) => b.length - a.length);
   return roots.find(root => directory === root || inside(root, directory));
 }
-async function selectedDirectory(directory, environment, platform) {
+// `directory` as the engine reaches it. The user's layout ends at the selected
+// directory, or at the installation root when `directory` is that root or
+// below it (the root may itself be the user's link). Every link up to that
+// boundary is followed under the engine's own rule (followLayoutLink), which
+// refuses by name a link the engine would not follow, so nothing is read or
+// written through one. Everything below the boundary stays as written, so a
+// link in a managed descendant is still refused by the caller's check.
+async function reachedDirectory(directory, environment, platform) {
   const selected = selectedRoot(directory, environment, platform);
-  if (!selected) return existingCacheDirectory(directory);
-  const resolved = await resolveCacheDirectory(selected);
-  return existingCacheDirectory(path.join(resolved, path.relative(selected, directory)));
+  if (!selected) return directory;
+  const root = installationRoot(environment, platform);
+  const boundary = directory === root || inside(root, directory) ? root : selected;
+  const { followLayoutLink } = require('./uninstall-registration');
+  return path.join((await followLayoutLink(boundary)).resolved, path.relative(boundary, directory));
+}
+async function selectedDirectory(directory, environment, platform) {
+  return existingCacheDirectory(await reachedDirectory(directory, environment, platform));
+}
+// The installation root where it really is, for what is read and held there.
+const reachedRoot = (environment, platform) => reachedDirectory(installationRoot(environment, platform), environment, platform);
+// One directory under two spellings: the engine records real paths, while this
+// package spells the user's layout as given (a linked HOME or XDG directory).
+// Existing ancestors are resolved; a part that does not exist yet is compared
+// as written.
+async function sameLocation(a, b, platform) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !path.isAbsolute(a) || !path.isAbsolute(b)) return false;
+  if (a === b) return true;
+  const spelling = value => platform === 'win32' ? value.toLowerCase() : value;
+  try { return spelling(await resolveCacheDirectory(a)) === spelling(await resolveCacheDirectory(b)); }
+  catch { return false; }
 }
 // npm's own command link at the launcher path. npm runs its package from the
 // resolved path, so with npm's prefix at a linked ~/.local the package's
@@ -260,17 +285,15 @@ async function selectedDirectory(directory, environment, platform) {
 async function ownLauncherLink(file, environment, platform, packageRoot) {
   const { ownCommandLink } = require('./uninstall-registration');
   if (await ownCommandLink(file, packageRoot, platform)) return true;
-  const directory = path.dirname(file), selected = selectedRoot(directory, environment, platform);
-  if (!selected) return false;
-  const resolved = path.join(await resolveCacheDirectory(selected), path.relative(selected, directory), path.basename(file));
+  const resolved = path.join(await reachedDirectory(path.dirname(file), environment, platform), path.basename(file));
   return resolved !== file && ownCommandLink(resolved, packageRoot, platform);
 }
 // Before a runtime is available, read the SAME journal without creating any
 // product directory. The verified bundled engine repeats this under OS locks
 // and owns cache/locator publication. This read is not a JavaScript flock.
 async function admitPublication(environment, platform) {
-  const root = installationRoot(environment, platform);
-  if (!await selectedDirectory(root, environment, platform)) return;
+  const root = await reachedRoot(environment, platform);
+  if (!await existingCacheDirectory(root)) return;
   const journal = path.join(root, '.stackbite-uninstall.json');
   if (!await exists(journal)) return;
   const record = JSON.parse((await readSmall(journal, 8 * 1024 * 1024)).toString('utf8').replace(/^\uFEFF/, ''));
@@ -279,7 +302,7 @@ async function admitPublication(environment, platform) {
   }
   const current = await locatorIncarnation(root);
   const saved = record.install_identity;
-  if (saved != null && (saved.root !== root || !/^[a-f0-9]{32}$/.test(saved.incarnation))) fail('Invalid removal installation identity');
+  if (saved != null && (!await sameLocation(saved.root, root, platform) || !/^[a-f0-9]{32}$/.test(saved.incarnation))) fail('Invalid removal installation identity');
   if (current && (!saved || current !== saved.incarnation)) return;
   fail('Stackbite removal is in progress');
 }
@@ -298,8 +321,8 @@ async function locatorIncarnation(root) {
 // capsule existed (no recovery_command). Only a release-pinned runtime from this
 // package can continue it. The digest binds the same request bytes until launch.
 async function acceptedRemovalWithoutCapsule(environment, platform) {
-  const root = installationRoot(environment, platform);
-  if (!await selectedDirectory(root, environment, platform)) return null;
+  const root = await reachedRoot(environment, platform);
+  if (!await existingCacheDirectory(root)) return null;
   const journal = path.join(root, '.stackbite-uninstall.json');
   let info;
   try { info = await fs.lstat(journal); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
@@ -310,7 +333,7 @@ async function acceptedRemovalWithoutCapsule(environment, platform) {
   if (record?.schema !== 'stackbite.uninstall.v1' || record.phase !== 'prepared' || record.accepted !== true
       || record.removal_requested !== true || record.recovery_command != null
       || typeof record.request_id !== 'string' || !record.request_id
-      || saved?.root !== root || !/^[a-f0-9]{32}$/.test(saved.incarnation)) return null;
+      || !saved || !/^[a-f0-9]{32}$/.test(saved.incarnation) || !await sameLocation(saved.root, root, platform)) return null;
   // A reinstall after this request (another incarnation) is not this removal's target.
   const current = await locatorIncarnation(root);
   if (current !== null && current !== saved.incarnation) return null;
@@ -516,15 +539,24 @@ async function reservePreparation(environment, platform, target, source) {
   const root = installationRoot(environment, platform), directory = path.join(root, '.stackbite-update');
   await admitPublication(environment, platform);
   await selectedDirectory(directory, environment, platform);
-  for (let parent = root; ; parent = path.dirname(parent)) {
-    if (await exists(path.join(parent, '.git'))) fail('Refusing installation preparation in a source repository');
-    if (parent === path.dirname(parent)) break;
+  // The directories are made where the root really is: a linked root's target
+  // may not exist yet, and what this run created is settled by those names.
+  const reached = await reachedDirectory(directory, environment, platform);
+  for (const start of new Set([root, path.dirname(reached)])) {
+    for (let parent = start; ; parent = path.dirname(parent)) {
+      if (await exists(path.join(parent, '.git'))) fail('Refusing installation preparation in a source repository');
+      if (parent === path.dirname(parent)) break;
+    }
   }
   if (source) await source.validate();
-  const firstCreated = await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  const firstCreated = await fs.mkdir(reached, { recursive: true, mode: 0o700 });
   await selectedDirectory(directory, environment, platform);
-  const directories = await createdDirectories(firstCreated, [directory, root]);
-  const file = path.join(directory, 'update.lock');
+  const directories = await createdDirectories(firstCreated, [reached, path.dirname(reached)]);
+  // The control file is opened, pinned and later removed in the directory
+  // that was just verified. The baseline keeps the name as this package and
+  // the engine spell it, and assertBaseline reads it through that name again,
+  // so a layout link that is retargeted while staging is a changed installation.
+  const file = path.join(reached, 'update.lock');
   const { handle, created } = await openPreparationFile(file);
   let preparation;
   try {
@@ -532,7 +564,7 @@ async function reservePreparation(environment, platform, target, source) {
     const identity = await baselinePin(file, environment, platform);
     if (!held.isFile() || held.nlink !== 1n || JSON.stringify(identity) !== JSON.stringify({ device: held.dev.toString(), inode: held.ino.toString() })) fail('Invalid installation preparation');
     preparation = { handle, file, identity, created, directories, target };
-    baseline = { root, preparation: { path: file, identity } };
+    baseline = { root, preparation: { path: path.join(directory, 'update.lock'), identity } };
     environment.STACKBITE_INSTALL_BASELINE = JSON.stringify(baseline);
     if (source) await source.validate();
     await admitPublication(environment, platform);
@@ -606,7 +638,8 @@ async function formerCache(home, spec) {
 // (even empty, the canonical name wins). It decides again under its locks.
 async function formerSelection(saved, environment, spec) {
   const state = Object.hasOwn(environment, 'STACKBITE_STATE_DIR') ? environment.STACKBITE_STATE_DIR : environment.HELM_STATE_DIR;
-  return state && path.resolve(state) !== saved?.state ? null : formerCache(saved?.home, spec);
+  if (state && !await sameLocation(path.resolve(state), saved?.state, spec.platform)) return null;
+  return formerCache(saved?.home, spec);
 }
 async function publishCache(payload, target, spec, options) {
   // The staging check and the reuse decision below judge the same locator bytes.
@@ -753,7 +786,8 @@ async function ensureBinary(spec, { cache = cacheDirectory(), runtime = null, do
     if (home) {
       if (checkOnly || reportCached) progress('validate');
       // Setup, removal and every publication below hash every member.
-      const proof = checkOnly || reportCached ? null : payloadProof.select(environment, installationRoot(environment, spec.platform));
+      const proof = checkOnly || reportCached ? null
+        : payloadProof.select(environment, await reachedRoot(environment, spec.platform));
       const installed = { home, executable: await validatePayload(home, spec, { includePhone, proof }) };
       if (proof?.taken) timing.mark(environment, 'launcher.payload_proof');
       // A selected image outside app/ is its own maintenance engine.

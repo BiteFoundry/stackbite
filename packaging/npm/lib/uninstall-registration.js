@@ -596,7 +596,12 @@ async function registrationOnly(argv, environment, launch, options = {}) {
 async function resumeWithoutRuntime(argv, environment, launch, options = {}) {
   if (!explicitApply(argv)) return null;
   const platform = options.platform || process.platform;
-  const root = options.installRoot || path.join(productData(environment, platform).data, platform === 'win32' ? 'Stackbite' : 'stackbite');
+  // The engine wrote the journal, its installation identity and its capsule
+  // pins under the real path of this root. A root reached through the user's
+  // own link (a linked HOME or XDG directory) is read there, so those recorded
+  // paths are compared with the files that are actually opened and run. A
+  // link the engine would not follow stays as given and is refused below.
+  const root = await realRoot(options.installRoot || path.join(productData(environment, platform).data, platform === 'win32' ? 'Stackbite' : 'stackbite'));
   const journal = path.join(root, '.stackbite-uninstall.json');
   const record = await readRemovalJournal(journal);
   if (record === undefined) return null;
@@ -613,6 +618,133 @@ async function resumeWithoutRuntime(argv, environment, launch, options = {}) {
   }
   if (platform !== 'win32') await assertShellCapsule(record, journal);
   return launch(selected[0], selected.slice(1), environment, options);
+}
+
+async function realRoot(root) {
+  try { return (await followLayoutLink(root)).resolved; }
+  catch (error) { if (error.code !== 'STACKBITE_LINK_REFUSED') throw error; return root; }
+}
+
+// Uninstall recovery also runs this file by itself after npm has removed its siblings.
+// Windows PowerShell reads the owner of each junction itself and the directory holding it.
+// The token user and system SIDs match private-files/src/layout_link.rs.
+const OTHER_OWNER = 'the link is owned by another user';
+const SHARED_HOLDER = 'the directory holding the link can be rewritten by another user';
+const SYSTEM = 'S-1-5-18', ADMINISTRATORS = 'S-1-5-32-544';
+const TRUSTED_INSTALLER = 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464';
+const PATHS = 'STACKBITE_LAYOUT_LINK_PATHS';
+const SID = /^S-1-\d+(?:-\d+)+$/;
+
+// One line for the token user, then one per path; '-' where the read failed.
+const SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  '$sid = [System.Security.Principal.SecurityIdentifier]',
+  'try { [Console]::Out.WriteLine([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value) }',
+  "catch { [Console]::Out.WriteLine('-') }",
+  `foreach ($p in $env:${PATHS}.Split('|')) {`,
+  "  try { [Console]::Out.WriteLine((New-Object System.Security.AccessControl.DirectorySecurity($p, 'Owner')).GetOwner($sid).Value) }",
+  "  catch { [Console]::Out.WriteLine('-') }",
+  '}',
+].join('\n');
+
+function variable(environment, name) {
+  const key = Object.keys(environment).find(key => key.toLowerCase() === name.toLowerCase());
+  return key === undefined ? undefined : environment[key];
+}
+
+// { user, owners }: the SID of this process's user and of each path's owner,
+// null where it could not be read. Rejects when nothing could be read at all.
+function readWindowsOwners(paths, { environment = process.env, timeout = 10000 } = {}) {
+  return new Promise((resolve, reject) => {
+    // '|' cannot be part of a Windows file name; it separates the operands.
+    if (!paths.every(item => typeof item === 'string' && path.win32.isAbsolute(item) && !/[|\0\r\n]/.test(item))) {
+      throw new Error('owner read needs absolute Windows paths');
+    }
+    const system = variable(environment, 'SystemRoot') || variable(environment, 'windir');
+    if (!system || !path.win32.isAbsolute(system)) throw new Error('SystemRoot is not set');
+    const child = { [PATHS]: paths.join('|') };
+    // A PSModulePath of another PowerShell edition breaks this one's start-up.
+    for (const [name, value] of Object.entries(environment)) {
+      if (![PATHS.toLowerCase(), 'psmodulepath'].includes(name.toLowerCase())) child[name] = value;
+    }
+    const shell = path.win32.join(system, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(SCRIPT, 'utf16le').toString('base64')];
+    require('node:child_process').execFile(shell, args, { env: child, timeout, windowsHide: true }, (error, stdout) => {
+      if (error) return reject(new Error(error.killed ? 'owner read timed out' : 'owner read failed'));
+      const lines = stdout.trim().split(/\r?\n/).map(line => SID.test(line) ? line : null);
+      if (lines.length !== paths.length + 1) return reject(new Error('owner read failed'));
+      resolve({ user: lines[0], owners: lines.slice(1) });
+    });
+  });
+}
+
+// Judge one link and the directory that holds it. Never rejects: the answer is
+// { owner, holderOwner, reason, detail }, where a null reason means the link
+// may be followed and anything else is the engine's refusal reason. owner is
+// the link's own owner SID (null when unknown), for the refusal message.
+async function judgeWindowsLink(link, holder, options = {}) {
+  let read;
+  try { read = await (options.read || readWindowsOwners)([link, holder], options); }
+  catch (error) { return { owner: null, holderOwner: null, reason: OTHER_OWNER, detail: error.message }; }
+  const { user, owners: [owner, holderOwner] } = read;
+  const trusted = sid => sid === SYSTEM || sid === ADMINISTRATORS || sid === TRUSTED_INSTALLER || (user !== null && sid === user);
+  const answer = (reason, detail) => ({ owner, holderOwner, reason, detail });
+  if (owner === null) return answer(OTHER_OWNER, 'the owner of the link could not be read');
+  if (!trusted(owner)) return answer(OTHER_OWNER, `the link is owned by ${owner}, not by ${user ?? 'this user (unknown)'} or the system`);
+  if (holderOwner === null) return answer(SHARED_HOLDER, 'the owner of the directory holding the link could not be read');
+  if (!trusted(holderOwner)) return answer(SHARED_HOLDER, `the directory holding the link is owned by ${holderOwner}, not by ${user ?? 'this user (unknown)'} or the system`);
+  return answer(null, null);
+}
+
+function linkRefused(link, target, owner, reason) {
+  const error = new Error(`Not following link ${link} -> ${target ?? '(target unreadable)'} (owner ${owner ?? 'unknown'}): ${reason}`);
+  return Object.assign(error, { code: 'STACKBITE_LINK_REFUSED', link, target, owner, reason });
+}
+
+const pathParts = text => text.split(path.sep).filter(part => part && part !== '.');
+
+// { resolved, links }: `given` with every link on it followed; links counts them.
+async function followLayoutLink(given) {
+  given = path.resolve(given);
+  const uid = typeof process.geteuid === 'function' ? process.geteuid() : null;
+  const trusted = owner => owner === 0 || owner === uid;
+  let current = path.parse(given).root, links = 0;
+  const pending = pathParts(given.slice(current.length));
+  while (pending.length) {
+    const name = pending.shift();
+    // Only a link target can supply this; the prefix is link-free.
+    if (name === '..') { current = path.dirname(current); continue; }
+    const candidate = path.join(current, name);
+    let info;
+    try { info = await fs.lstat(candidate); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      return { resolved: path.join(candidate, ...pending), links };
+    }
+    if (!info.isSymbolicLink()) { current = candidate; continue; }
+    let target = null;
+    try { target = await fs.readlink(candidate); } catch { /* refused below */ }
+    let owner = info.uid;
+    if (uid === null) {
+      const verdict = await judgeWindowsLink(candidate, current);
+      owner = verdict.owner;
+      if (verdict.reason) throw linkRefused(candidate, target, owner, verdict.reason);
+    } else {
+      if (!trusted(owner)) throw linkRefused(candidate, target, owner, OTHER_OWNER);
+      const holder = await fs.stat(current);
+      if (!trusted(holder.uid) || ((holder.mode & 0o022) !== 0 && (holder.mode & 0o1000) === 0)) {
+        throw linkRefused(candidate, target, owner, SHARED_HOLDER);
+      }
+    }
+    if (target === null) throw linkRefused(candidate, null, owner, 'the link target cannot be read');
+    if (links === 40) throw linkRefused(candidate, target, owner, 'more than 40 links on the path');
+    links += 1;
+    if (path.isAbsolute(target)) {
+      current = path.parse(target).root;
+      pending.unshift(...pathParts(target.slice(current.length)));
+    } else pending.unshift(...pathParts(target));
+  }
+  return { resolved: current, links };
 }
 
 // The one finalize-eligibility contract (the Rust controller's
@@ -709,4 +841,4 @@ async function assertSourceCleanupPins(pins) {
 }
 
 module.exports = { registration, npmProgram, removeRegistration, explicitApply, descriptor, optionalDescriptor, settleWithoutNpm,
-  resumeWithoutRuntime, registrationOnly, ownCommandLink, processesDone };
+  resumeWithoutRuntime, registrationOnly, ownCommandLink, processesDone, followLayoutLink, judgeWindowsLink, readWindowsOwners, OTHER_OWNER, SHARED_HOLDER };

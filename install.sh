@@ -1,6 +1,5 @@
 #!/bin/sh
-# StackBite 0.7.6, source commit dc03f58f5ffcbe25edec859d0a3505bd34c4006f.
-# macOS installs StackBite 0.6.0 (source commit 060019651abe60485a0cc39e72d99e8756e4aea2) until 0.7.6 has macOS bundles.
+# StackBite 0.8.0, source commit 732fe64e9e45b974c56472f79377cffdd85b52e7.
 set -eu
 run=yes
 case "${1:-}" in
@@ -10,9 +9,9 @@ case "${1:-}" in
 esac
 [ "$#" -eq 0 ] || { echo 'Usage: sh install.sh [--no-run]' >&2; exit 2; }
 case "$(uname -s):$(uname -m)" in
-    Darwin:arm64) version='0.6.0'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.6.0/stackbite-0.6.0-macos-arm64-060019651abe.tar.gz'; expected='4aafd7acb577c91fd3b16c15d27dced9226a2c72462682e0cbe61f2c3e54d639'; root='stackbite-0.6.0-macos-arm64-060019651abe'; hash=shasum ;;
-    Darwin:x86_64) version='0.6.0'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.6.0/stackbite-0.6.0-macos-x86_64-060019651abe.tar.gz'; expected='bb3ea60fc214a659c93370250693d252aade1e39ef285808847b14b8cde04570'; root='stackbite-0.6.0-macos-x86_64-060019651abe'; hash=shasum ;;
-    Linux:x86_64) version='0.7.6'; url='https://github.com/Shinick-Han/stackbite/releases/download/v0.7.6/stackbite-0.7.6-linux-x86_64-dc03f58f5ffc.tar.gz'; expected='22c774ced419c0c454d943c94ea3cd035d9e467de6831f8f5604dc145910d94e'; root='stackbite-0.7.6-linux-x86_64-dc03f58f5ffc'; hash=sha256sum ;;
+    Darwin:arm64) url='https://github.com/Shinick-Han/stackbite/releases/download/v0.8.0/stackbite-0.8.0-macos-arm64-732fe64e9e45.tar.gz'; expected='734bda6945cb4bc0dc1783c30fa6e8c3e77e4f6c264d4b0189ebd6fe2d9303ad'; root='stackbite-0.8.0-macos-arm64-732fe64e9e45'; hash=shasum ;;
+    Darwin:x86_64) url='https://github.com/Shinick-Han/stackbite/releases/download/v0.8.0/stackbite-0.8.0-macos-x86_64-732fe64e9e45.tar.gz'; expected='b494151e64f142b16ffbdbe4023b20b489cbfbb757f385dd7909513cf30ceacb'; root='stackbite-0.8.0-macos-x86_64-732fe64e9e45'; hash=shasum ;;
+    Linux:x86_64) url='https://github.com/Shinick-Han/stackbite/releases/download/v0.8.0/stackbite-0.8.0-linux-x86_64-732fe64e9e45.tar.gz'; expected='52192dc9fc677739925a2281475e353ad08a9802781e72b84bcad29992b05d4e'; root='stackbite-0.8.0-linux-x86_64-732fe64e9e45'; hash=sha256sum ;;
     *) echo 'StackBite supports macOS arm64/x86_64 and Linux x86_64.' >&2; exit 1 ;;
 esac
 [ -n "$url" ] || { echo 'This installer has no reviewed release pin for this architecture.' >&2; exit 1; }
@@ -20,7 +19,7 @@ stage=$(mktemp -d "${TMPDIR:-/tmp}/stackbite-install.XXXXXXXX")
 cleanup() { rm -rf "$stage"; }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-printf 'Installing StackBite %s...\n' "$version"
+printf 'Installing StackBite 0.8.0...\n'
 curl -fsSL "$url" -o "$stage/archive.tar.gz"
 if [ "$hash" = shasum ]; then
     actual=$(shasum -a 256 "$stage/archive.tar.gz")
