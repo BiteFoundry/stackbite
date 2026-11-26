@@ -3,7 +3,7 @@
 셸과 설치된 CLI를 Room·Seat로 나란히 실행하고, 에이전트가 같은 CLI로 협업하게 합니다.
 StackBite는 Windows·Linux·macOS용 독립 Rust 애플리케이션이며 실행에 Python이 필요 없습니다.
 
-[설치](#설치) · [원격 실행 host](#원격-실행-host) · [English](https://github.com/Shinick-Han/stackbite/blob/main/README.md) · [Releases](https://github.com/Shinick-Han/stackbite/releases/latest) · [License](https://github.com/Shinick-Han/stackbite/blob/main/LICENSE)
+[설치](#설치) · [원격 실행 host](#원격-실행-host) · [English](https://github.com/BiteFoundry/stackbite/blob/main/README.md) · [Releases](https://github.com/BiteFoundry/stackbite/releases/latest) · [License](https://github.com/BiteFoundry/stackbite/blob/main/LICENSE)
 
 ## 설치
 
@@ -21,7 +21,7 @@ stackbite
 한 번만 실행하려면 `npx --yes stackbite@latest`를 사용합니다.
 Codex·Claude 같은 provider CLI는 별도로 설치하고 로그인합니다.
 
-[최신 release](https://github.com/Shinick-Han/stackbite/releases/latest)에서 네이티브
+[최신 release](https://github.com/BiteFoundry/stackbite/releases/latest)에서 네이티브
 압축 파일을 받아 **전체를 해제**한 뒤 `stackbite.exe`(Windows) 또는 `./stackbite`
 (Linux·macOS)로 실행할 수도 있습니다. 이 경로는 Node.js와 Python이 모두 필요 없습니다.
 
@@ -35,7 +35,7 @@ Codex·Claude 같은 provider CLI는 별도로 설치하고 로그인합니다.
 
 네 배포본은 runtime source `732fe64e9e45`로 빌드합니다. Linux ARM·Alpine/musl
 배포본은 제공하지 않습니다. 배포 파일, 실제 검사 범위와 아직 검증하지 않은 항목은
-[0.8.0 release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.8.0)에 있습니다.
+[0.8.0 release notes](https://github.com/BiteFoundry/stackbite/releases/tag/v0.8.0)에 있습니다.
 
 ## 작업 공간
 
@@ -131,12 +131,12 @@ provider에 따라 다릅니다. 전체 uninstall은 소유한 로컬 capsule ca
 
 ## 소스와 라이선스
 
-StackBite 0.5.122 이상은 [StackBite License](https://github.com/Shinick-Han/stackbite/blob/main/LICENSE)에
+StackBite 0.5.122 이상은 [StackBite License](https://github.com/BiteFoundry/stackbite/blob/main/LICENSE)에
 따른 독점 소프트웨어입니다. 수정하지 않은 바이너리 릴리스는 개인 및 내부 업무 용도로
 무료 사용할 수 있으며, 1st-party 소스의 수정·재배포에는 허가가 필요합니다. MIT로 게시된
 0.5.121 이하 릴리스는 해당 사본에 대해 MIT로 유지됩니다. 타사 구성 요소는 원래
 라이선스와 고지를 유지합니다.
 
 1st-party 소스 저장소는 비공개입니다. 공개 바이너리와 이슈:
-[releases](https://github.com/Shinick-Han/stackbite/releases),
-[issues](https://github.com/Shinick-Han/stackbite/issues).
+[releases](https://github.com/BiteFoundry/stackbite/releases),
+[issues](https://github.com/BiteFoundry/stackbite/issues).

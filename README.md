@@ -1,10 +1,18 @@
 # StackBite
 
+[![npm version](https://img.shields.io/npm/v/stackbite?style=flat-square&color=7aa2f7&label=stackbite&logo=npm)](https://www.npmjs.com/package/stackbite)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-24292F?style=flat-square)](https://github.com/BiteFoundry/stackbite/releases/tag/v0.8.0)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-DEA584?style=flat-square&logo=rust)](https://bitefoundry.dev/stackbite)
+[![Website](https://img.shields.io/badge/site-bitefoundry.dev%2Fstackbite-7aa2f7?style=flat-square)](https://bitefoundry.dev/stackbite)
+
+![StackBite v0.8.0 TUI Demo](https://raw.githubusercontent.com/BiteFoundry/stackbite/main/assets/demo.gif)
+
+> **Rooms & Split Panes · Files Preview · Menu & Ctrl+B Help** — captured directly from the native StackBite v0.8.0 runtime · [bitefoundry.dev/stackbite](https://bitefoundry.dev/stackbite) · [한국어 README](README.ko.md)
 A terminal workspace for shells and AI coding agents, organized into Rooms and
 Seats. The app is a Rust-native launcher, Room service, terminal owner and TUI;
 no Python is needed to run it.
 
-Current release: **0.8.0** · [Release notes](https://github.com/Shinick-Han/stackbite/releases/tag/v0.8.0) · [All releases](https://github.com/Shinick-Han/stackbite/releases) · [Issues](https://github.com/Shinick-Han/stackbite/issues)
+Current release: **0.8.0** · [Release notes](https://github.com/BiteFoundry/stackbite/releases/tag/v0.8.0) · [All releases](https://github.com/BiteFoundry/stackbite/releases) · [Issues](https://github.com/BiteFoundry/stackbite/issues)
 
 ## Install
 
@@ -23,7 +31,7 @@ needed, and later launches reuse the verified copy. `npx --yes stackbite@latest`
 runs it once. Install and sign in to your provider CLIs separately.
 
 Without Node.js, download a native bundle from the
-[latest release](https://github.com/Shinick-Han/stackbite/releases/latest),
+[latest release](https://github.com/BiteFoundry/stackbite/releases/latest),
 extract the **entire** archive and run `stackbite.exe` (Windows) or `./stackbite`
 (Linux, macOS).
 
@@ -34,7 +42,7 @@ extract the **entire** archive and run `stackbite.exe` (Windows) or `./stackbite
 | macOS | Apple Silicon and Intel, macOS 13+ |
 
 Linux ARM and musl/Alpine bundles are not provided. npm details:
-[packaging/npm/README.md](https://github.com/Shinick-Han/stackbite/blob/main/packaging/npm/README.md).
+[packaging/npm/README.md](https://github.com/BiteFoundry/stackbite/blob/main/packaging/npm/README.md).
 
 ## Use
 
@@ -81,7 +89,7 @@ keeps definitions and records. `stackbite --help`, `stackbite remote --help` and
 This repository distributes the npm launcher, installers and signed native release
 artifacts. The first-party source is private. StackBite 0.5.122 and later is
 licensed under the
-[StackBite License](https://github.com/Shinick-Han/stackbite/blob/main/LICENSE);
+[StackBite License](https://github.com/BiteFoundry/stackbite/blob/main/LICENSE);
 releases 0.5.121 and earlier keep their MIT License. Bundled dependencies retain
 their own licenses and notices. Each release's notes state its actual platform
 validation and known limits.
